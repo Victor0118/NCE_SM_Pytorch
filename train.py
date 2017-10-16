@@ -37,17 +37,6 @@ def set_vectors(field, vector_path):
     return field
 
 
-def regularize_loss(model, loss):
-    flattened_params = []
-    reg = args.weight_decay
-
-    for p in model.parameters():
-        f = p.data.clone()
-        flattened_params.append(f.view(-1))
-
-    fp = torch.cat(flattened_params)
-    loss = loss + 0.5 * reg * fp.norm() * fp.norm()
-    return loss
 
 # Set default configuration in : args.py
 args = get_args()
@@ -77,7 +66,9 @@ train, dev, test = TrecDataset.splits(QID, QUESTION, ANSWER, EXTERNAL, LABEL)
 
 QID.build_vocab(train, dev, test)
 QUESTION.build_vocab(train, dev, test)
-ANSWER.build_vocab(train, dev, test)
+# ANSWER.build_vocab(train, dev, test)
+POS.build_vocab(train, dev, test)
+NEG.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 
@@ -120,7 +111,6 @@ else:
     if args.cuda:
         model.cuda()
         print("Shift model to GPU")
-
 
 parameter = filter(lambda p: p.requires_grad, model.parameters())
 
@@ -167,7 +157,6 @@ while True:
         # n_correct += (torch.max(scores, 1)[1].view(batch.label.size()).data == batch.label.data).sum()
         # n_total += batch.batch_size
         # train_acc = 100. * n_correct / n_total
-
         # loss = criterion(scores, batch.label)
         # loss.backward()
         optimizer.step()

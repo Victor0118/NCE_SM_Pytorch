@@ -13,7 +13,6 @@ class PairwiseLossCriterion(Function):
     #     # self.arg = arg
     #     self.gradInput = torch.zeros(2)
     #     self.input = None
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -38,11 +37,15 @@ class PairwiseConv(nn.Module):
         self.posModel = self.convModel
         # share or copy ??
         # https://discuss.pytorch.org/t/copying-nn-modules-without-shared-memory/113
-        self.negModel = copy.deepcopy(self.posModel)
+        # self.negModel = copy.deepcopy(self.posModel)
+        self.negModel = self.convModel
+        self.linearLayer = nn.Linear(model.n_hidden, 1)
 
     def forward(self, input):
         pos = self.posModel(input[0])
         neg = self.negModel(input[1])
+        pos = self.linearLayer(pos)
+        neg = self.linearLayer(neg)
         combine = torch.cat([pos, neg], 0)
         return combine
 
@@ -145,8 +148,7 @@ class SmPlusPlus(nn.Module):
         # append external features and feed to fc
         x.append(x_ext)
         x = torch.cat(x, 1)
-
         x = F.tanh(self.combined_feature_vector(x))
         x = self.dropout(x)
-        x = self.hidden(x)
+        # x = self.hidden(x)
         return x
