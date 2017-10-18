@@ -56,19 +56,22 @@ np.random.seed(args.seed)
 random.seed(args.seed)
 
 QID = data.Field(sequential=False)
+AID = data.Field(sequential=False)
 QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=False, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
                       preprocessing=data.Pipeline(lambda x: x.split()),
                       postprocessing=data.Pipeline(lambda x, train: [float(y) for y in x]))
-train, dev, test = TrecDataset.splits(QID, QUESTION, ANSWER, EXTERNAL, LABEL)
+
+train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 
 QID.build_vocab(train, dev, test)
+AID.build_vocab(train, dev, test)
 QUESTION.build_vocab(train, dev, test)
-# ANSWER.build_vocab(train, dev, test)
-POS.build_vocab(train, dev, test)
-NEG.build_vocab(train, dev, test)
+ANSWER.build_vocab(train, dev, test)
+# POS.build_vocab(train, dev, test)
+# NEG.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 
