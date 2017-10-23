@@ -6,26 +6,50 @@ from torch.autograd import Function
 import math
 import copy
 
+# class PairwiseLossCriterion(Function):
+#     """docstring for PairwiseLossCriterion"""
+#     # def __init__(self):
+#     #     super(PairwiseLossCriterion, self).__init__()
+#     #     # self.arg = arg
+#     #     self.gradInput = torch.zeros(2)
+#     #     self.input = None
+#     @classmethod
+#     def forward(ctx, input, weight = None, bias = None):
+#         ctx.save_for_backward(input)
+#         return torch.max(torch.zeros(1), 1 - (input[0] - input[1]))/2
+#
+#     @classmethod
+#     def backward(ctx, gradInput):
+#         input = ctx.saved_variables
+#         diff = 1 - (input[0] - input[1])
+#         print(diff)
+#         gradInput = torch.zeros(2)
+#         if diff > 0:
+#             gradInput[0] = -0.5
+#             gradInput[1] = 0.5
+#         return gradInput
+
 class PairwiseLossCriterion(Function):
     """docstring for PairwiseLossCriterion"""
-    # def __init__(self):
-    #     super(PairwiseLossCriterion, self).__init__()
-    #     # self.arg = arg
-    #     self.gradInput = torch.zeros(2)
-    #     self.input = None
-    @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return math.max(0, 1 - (input[0] - input[1]))/2
+    def __init__(self):
+        super(PairwiseLossCriterion, self).__init__()
+        self.input = None
 
-    @staticmethod
-    def backward(ctx, gradInput):
-        input = ctx.saved_variables
-        diff = 1 - (input[0] - input[1])
-        if diff > 0:
-            gradInput[0] = -0.5
-            gradInput[1] = 0.5
-        return gradInput
+    def forward(self, input, weight = None, bias = None):
+        self.input = input
+        return torch.max(torch.zeros(1), 1 - (input[0] - input[1]))/2
+
+    def backward(self, grad_output):
+        diff = 1 - (self.input[0] - self.input[1])
+        print("diff:",diff) #, "grad_output:",grad_output, "type of grad_output:", type(grad_output)
+        grad_output = torch.zeros(2)
+        if diff.numpy()[0] > 0:
+            grad_output[0] = -0.5
+            grad_output[1] = 0.5
+        else:
+            grad_output[0] = 0
+            grad_output[1] = 0
+        return grad_output.view(1, 2)
 
 class PairwiseConv(nn.Module):
     """docstring for PairwiseConv"""
@@ -34,12 +58,13 @@ class PairwiseConv(nn.Module):
         # self.linearLayer = self:LinearLayer() ??
         # self.convModel = SmPlusPlus(config)
         self.convModel = model
+        self.linearLayer = nn.Linear(model.n_hidden, 1)
         self.posModel = self.convModel
         # share or copy ??
         # https://discuss.pytorch.org/t/copying-nn-modules-without-shared-memory/113
         # self.negModel = copy.deepcopy(self.posModel)
         self.negModel = self.convModel
-        self.linearLayer = nn.Linear(model.n_hidden, 1)
+
 
     def forward(self, input):
         pos = self.posModel(input[0])
@@ -81,10 +106,10 @@ class SmPlusPlus(nn.Module):
         self.conv_qa = nn.Conv2d(2, output_channel, (filter_width, words_dim), padding=(7, 0))
 
         self.dropout = nn.Dropout(config.dropout)
-        n_hidden = 3 * output_channel + ext_feats_size
+        self.n_hidden = 3 * output_channel + ext_feats_size
 
-        self.combined_feature_vector = nn.Linear(n_hidden, n_hidden)
-        self.hidden = nn.Linear(n_hidden, n_classes)
+        self.combined_feature_vector = nn.Linear(self.n_hidden, self.n_hidden)
+        self.hidden = nn.Linear(self.n_hidden, n_classes)
 
     def forward(self, x):
         x_question = x.question

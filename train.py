@@ -3,20 +3,26 @@ import os
 import numpy as np
 import random
 
-import logging
 import torch
 import torch.nn as nn
 from torchtext import data
 
 from args import get_args
-from model import SmPlusPlus, PairwiseLossCriterion
+from model import SmPlusPlus, PairwiseLossCriterion, PairwiseConv
 from trec_dataset import TrecDataset
+from sklearn.preprocessing import normalize
+import operator
+import heapq
+from torch.autograd import Variable
+
 from evaluate import evaluate
+import sys
 
 args = get_args()
 config = args
 
 torch.manual_seed(args.seed)
+
 
 def set_vectors(field, vector_path):
     if os.path.isfile(vector_path):
@@ -37,8 +43,6 @@ def set_vectors(field, vector_path):
     return field
 
 
-
-# Set default configuration in : args.py
 args = get_args()
 config = args
 
@@ -74,16 +78,15 @@ ANSWER.build_vocab(train, dev, test)
 # NEG.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
-
 QUESTION = set_vectors(QUESTION, args.vector_cache)
 ANSWER = set_vectors(ANSWER, args.vector_cache)
 
 train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-                                   sort=False, shuffle=True)
+                           sort=False, shuffle=True)
 dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                         sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                          sort=False, shuffle=False)
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
@@ -109,13 +112,14 @@ else:
     model.static_answer_embed.weight.data.copy_(ANSWER.vocab.vectors)
     model.nonstatic_answer_embed.weight.data.copy_(ANSWER.vocab.vectors)
 
-    pw_model = PairwiseConv(model)
-
     if args.cuda:
         model.cuda()
         print("Shift model to GPU")
 
-parameter = filter(lambda p: p.requires_grad, model.parameters())
+
+pw_model = PairwiseConv(model)
+
+parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 
 # the SM model originally follows SGD but Adadelta is used here
 optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay)
@@ -130,7 +134,8 @@ iters_not_improved = 0
 epoch = 0
 start = time.time()
 header = '  Time Epoch Iteration Progress    (%Epoch)   Loss   Dev/Loss     Accuracy  Dev/Accuracy'
-dev_log_template = ' '.join('{:>6.0f},{:>5.0f},{:>9.0f},{:>5.0f}/{:<5.0f} {:>7.0f}%,{:>8.6f},{:8.6f},{:12.4f},{:12.4f}'.split(','))
+dev_log_template = ' '.join(
+    '{:>6.0f},{:>5.0f},{:>9.0f},{:>5.0f}/{:<5.0f} {:>7.0f}%,{:>8.6f},{:8.6f},{:12.4f},{:12.4f}'.split(','))
 log_template = ' '.join('{:>6.0f},{:>5.0f},{:>9.0f},{:>5.0f}/{:<5.0f} {:>7.0f}%,{:>8.6f},{},{:12.4f},{}'.split(','))
 os.makedirs(args.save_path, exist_ok=True)
 os.makedirs(os.path.join(args.save_path, args.dataset), exist_ok=True)
@@ -139,6 +144,43 @@ print(header)
 index2label = np.array(LABEL.vocab.itos)
 index2qid = np.array(QID.vocab.itos)
 index2question = np.array(ANSWER.vocab.itos)
+
+
+def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
+    dis_list = []
+    pos_feature_norm = pos_feature / np.sqrt(sum(pos_feature ** 2))
+    for key in neg_dict:
+        if distance == "l2":
+            dis = np.sqrt(np.sum((np.array(pos_feature) - neg_dict[key]) ** 2))
+        elif distance == "cosine":
+            feat_norm = normalize(np.array(neg_dict[key]), norm='l2')
+            dis = 1 - feat_norm.dot(pos_feature_norm)
+        dis_list.append(dis)
+
+    k = min(k, len(neg_dict))
+    min_list = heapq.nsmallest(k, enumerate(dis_list), key=operator.itemgetter(1))
+    min_id_list = [x[0] for x in min_list]
+    return min_id_list
+
+
+def get_random_neg_id(q2neg, qid_i, k=5):
+    k = min(k, len(q2neg[qid_i]))
+    ran = random.sample(q2neg[qid_i], k)
+    return ran
+
+
+def get_batch(question, answer, ext_feat):
+    new_batch = data.Batch()
+    new_batch.batch_size = 1
+    new_batch.dataset = batch.dataset
+    setattr(new_batch, "answer", torch.stack([answer]))
+    setattr(new_batch, "question", torch.stack([question]))
+    setattr(new_batch, "ext_feat", torch.stack([ext_feat]))
+    return new_batch
+
+
+q2neg = {}
+question2answer = {}
 
 while True:
     if early_stop:
@@ -152,35 +194,94 @@ while True:
         # model.train();
         pw_model.train();
         optimizer.zero_grad()
-        output = pw_model(batch)
-        loss = pairwiseLoss(output)
-        loss_num += loss.data[0]
-        loss.backwward()
-        # scores = model(batch)
-        # n_correct += (torch.max(scores, 1)[1].view(batch.label.size()).data == batch.label.data).sum()
-        # n_total += batch.batch_size
-        # train_acc = 100. * n_correct / n_total
-        # loss = criterion(scores, batch.label)
-        # loss.backward()
-        optimizer.step()
+
+        new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
+        features = pw_model.convModel(batch)
+
+        for i in range(batch.batch_size):
+            label_i = batch.label[i].cpu().data.numpy()[0]
+            question_i = batch.question[i]
+            question_i = question_i[question_i!=1] # remove padding 1 <pad>
+            # print(torch.max(question_i))
+            # exit(1)
+            answer_i = batch.answer[i]
+            answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
+            ext_feat_i = batch.ext_feat[i]
+            qid_i = batch.qid[i].data.cpu().numpy()[0]
+            aid_i = batch.aid[i].data.cpu().numpy()[0]
+
+            if qid_i not in question2answer:
+                question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
+
+            if label_i == 1:
+
+                if aid_i not in question2answer[qid_i]["pos"]:
+                    question2answer[qid_i]["pos"][aid_i] = {}
+
+                question2answer[qid_i]["pos"][aid_i]["answer"] = answer_i
+                question2answer[qid_i]["pos"][aid_i]["ext_feat"] = ext_feat_i
+
+                # get neg samples
+                if epoch == 1:
+                    continue
+                elif epoch == 2:
+                    near_list = get_random_neg_id(q2neg, qid_i, k=5)
+                else:
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=5)
+                # print(near_list)
+                new_pos = get_batch(question_i, answer_i, ext_feat_i)
+                for near_id in near_list:
+                    near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
+                    near_answer = near_answer[near_answer != 1]
+                    ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
+                    new_neg = get_batch(question_i, near_answer, ext_feat_neg)
+                    # print(new_pos.answer.size()) # [1, 17]
+                    # print(new_pos.batch_size)
+                    # print(new_pos.question.size())  # [1, 50]
+                    # print(new_pos.ext_feat.size())  # [1, 4]
+                    output = pw_model([new_pos, new_neg])
+                    print(output)
+                    loss = pairwiseLoss(output)
+                    print(loss)
+                    loss_num += loss.data[0]
+                    print(loss_num)
+                    loss.backward()
+                    optimizer.step()
+
+            elif label_i == 2:
+
+                if aid_i not in question2answer[qid_i]["neg"]:
+                    question2answer[qid_i]["neg"][aid_i] = {}
+
+                question2answer[qid_i]["neg"][aid_i]["answer"] = answer_i
+                question2answer[qid_i]["neg"][aid_i]["ext_feat"] = ext_feat_i
+
+                if epoch == 1:
+                    if qid_i not in q2neg:
+                        q2neg[qid_i] = []
+
+                    q2neg[qid_i].append(aid_i)
 
         # Evaluate performance on validation set
-        if iterations % args.dev_every == 1:
+        if iterations % args.dev_every == 1 and epoch != 1:
             # switch model into evaluation mode
             # model.eval()
             pw_model.eval()
             dev_iter.init_epoch()
-            # n_dev_correct = 0
+            n_dev_correct = 0
             dev_losses = []
             instance = []
-            dev_loss_num = 0
+            dev_correct_num = 0
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
                 # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
-                output = pw_model(batch)
-                loss = pairwiseLoss(output)
-                dev_loss_num += loss.data[0]
-                loss.backwward()
-                # true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
+                output = pw_model.convModel(dev_batch)
+                output = pw_model.linearLayer(output)
+                output[output>0.5] = 1
+                output[output<=0.5] = 0
+                n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
+                # dev_loss_num += loss.data[0]
+                # true_label_array = index2lab
+                # el[np.transpose(dev_batch.label.cpu().data.numpy())]
                 # scores = model(dev_batch)
                 # n_dev_correct += (torch.max(scores, 1)[1].view(dev_batch.label.size()).data == dev_batch.label.data).sum()
                 # dev_loss = criterion(scores, dev_batch.label)
@@ -201,10 +302,10 @@ while True:
             #                               sum(dev_losses) / len(dev_losses), train_acc, dev_map))
 
             # Update validation results
-            if dev_loss_num < best_dev_loss:
+            if dev_correct_num < n_dev_correct:
                 iters_not_improved = 0
-                best_dev_loss = dev_loss_num
-                snapshot_path = os.path.join(args.save_path, args.dataset, args.mode+'_best_model.pt')
+                dev_correct_num = n_dev_correct
+                snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
                 torch.save(model, snapshot_path)
             else:
                 iters_not_improved += 1
@@ -212,12 +313,16 @@ while True:
                     early_stop = True
                     break
 
-        if iterations % args.log_every == 1:
+        if iterations % args.log_every == 1 and epoch != 1:
             # print progress message
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
-                                      dev_loss_num, ' ' * 12))
+                                      dev_correct_num, ' ' * 12))
+            # print(log_template.format(time.time() - start,
+            #                           epoch, iterations, 1 + batch_idx, len(train_iter),
+            #                           100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
+            #                           dev_loss_num, ' ' * 12))
             # print(log_template.format(time.time() - start,
             #                           epoch, iterations, 1 + batch_idx, len(train_iter),
             #                           100. * (1 + batch_idx) / len(train_iter), loss.data[0], ' ' * 8,
