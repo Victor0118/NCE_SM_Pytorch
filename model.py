@@ -37,19 +37,23 @@ class PairwiseLossCriterion(Function):
 
     def forward(self, input, weight = None, bias = None):
         self.input = input
+        print(self.input)
         return torch.max(torch.zeros(1), 1 - (input[0] - input[1]))/2
 
     def backward(self, grad_output):
         diff = 1 - (self.input[0] - self.input[1])
-        print("diff:",diff) #, "grad_output:",grad_output, "type of grad_output:", type(grad_output)
+
+        # print("diff:",diff) #, "grad_output:",grad_output, "type of grad_output:", type(grad_output)
         grad_output = torch.zeros(2)
         if diff.numpy()[0] > 0:
             grad_output[0] = -0.5
             grad_output[1] = 0.5
-        else:
-            grad_output[0] = 0
-            grad_output[1] = 0
-        return grad_output.view(1, 2)
+        # else:
+        #     grad_output[0] = 0
+        #     grad_output[1] = 0
+
+        print(grad_output)
+        return grad_output.view(2, 1)
 
 class PairwiseConv(nn.Module):
     """docstring for PairwiseConv"""
@@ -148,10 +152,22 @@ class SmPlusPlus(nn.Module):
 
             question_comb_static = self.static_question_embed(x_question).unsqueeze(1)
             answer_comb_static = self.static_answer_embed(x_answer).unsqueeze(1)  # (batch, sent_len, embed_dim)
-            padding = Variable(torch.zeros(answer_comb_static.size(0), answer_comb_static.size(1),
-                                           answer_comb_static.size(2) - question_comb_static.size(2), answer_comb_static.size(3)))
-            padded_question_static = torch.cat([question_comb_static, padding], 2)
-            qa_combined_static = torch.stack([padded_question_static, answer_comb_static], dim=1).squeeze(2)
+
+            padded_question_static = question_comb_static
+            padded_answer_static = answer_comb_static
+            padding_num = answer_comb_static.size(2) - question_comb_static.size(2)
+            if padding_num > 0:
+                padding = Variable(torch.zeros(answer_comb_static.size(0), answer_comb_static.size(1),
+                                               padding_num, answer_comb_static.size(3)))
+
+                padded_question_static = torch.cat([question_comb_static, padding], 2)
+            elif padding_num < 0:
+                padding = Variable(torch.zeros(answer_comb_static.size(0), answer_comb_static.size(1),
+                                               -padding_num, answer_comb_static.size(3)))
+
+                padded_answer_static = torch.cat([answer_comb_static, padding], 2)
+
+            qa_combined_static = torch.stack([padded_question_static, padded_answer_static], dim=1).squeeze(2)
 
             # question_comb = self.nonstatic_question_embed(x_question).unsqueeze(1)
             # answer_comb = self.nonstatic_answer_embed(x_answer).unsqueeze(1)  # (batch, sent_len, embed_dim)

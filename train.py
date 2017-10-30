@@ -125,6 +125,7 @@ parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay)
 criterion = nn.CrossEntropyLoss()
 pairwiseLoss = PairwiseLossCriterion()
+marginRankingLoss = nn.MarginRankingLoss(margin = 1)
 
 early_stop = False
 best_dev_map = 0
@@ -181,6 +182,7 @@ def get_batch(question, answer, ext_feat):
 
 q2neg = {}
 question2answer = {}
+best_dev_correct = 0
 
 while True:
     if early_stop:
@@ -197,15 +199,16 @@ while True:
 
         new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
         features = pw_model.convModel(batch)
-
+        # print(batch.label)
+        # exit(1)
         for i in range(batch.batch_size):
             label_i = batch.label[i].cpu().data.numpy()[0]
             question_i = batch.question[i]
-            question_i = question_i[question_i!=1] # remove padding 1 <pad>
+            # question_i = question_i[question_i!=1] # remove padding 1 <pad>
             # print(torch.max(question_i))
             # exit(1)
             answer_i = batch.answer[i]
-            answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
+            # answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
             ext_feat_i = batch.ext_feat[i]
             qid_i = batch.qid[i].data.cpu().numpy()[0]
             aid_i = batch.aid[i].data.cpu().numpy()[0]
@@ -213,7 +216,9 @@ while True:
             if qid_i not in question2answer:
                 question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
 
-            if label_i == 1:
+            # in the dataset, "1" for positive, "0" for negative
+            # in the code, 2 for positive and 1 for negative?
+            if label_i == 2:
 
                 if aid_i not in question2answer[qid_i]["pos"]:
                     question2answer[qid_i]["pos"][aid_i] = {}
@@ -224,10 +229,11 @@ while True:
                 # get neg samples
                 if epoch == 1:
                     continue
+                # random generate sample in the first training epoch
                 elif epoch == 2:
-                    near_list = get_random_neg_id(q2neg, qid_i, k=5)
+                    near_list = get_random_neg_id(q2neg, qid_i, k=8)
                 else:
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=5)
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=8)
                 # print(near_list)
                 new_pos = get_batch(question_i, answer_i, ext_feat_i)
                 for near_id in near_list:
@@ -240,15 +246,16 @@ while True:
                     # print(new_pos.question.size())  # [1, 50]
                     # print(new_pos.ext_feat.size())  # [1, 4]
                     output = pw_model([new_pos, new_neg])
-                    print(output)
-                    loss = pairwiseLoss(output)
-                    print(loss)
-                    loss_num += loss.data[0]
-                    print(loss_num)
+                    # print("output:",output.data.numpy()[0][0], output.data.numpy()[1][0])
+                    # loss = pairwiseLoss(output)
+                    loss = marginRankingLoss(output[0], output[1], 1)
+                    # print("loss:",loss.data.numpy()[0])
+                    loss_num += loss.data.numpy()[0]
+                    # print(loss_num)
                     loss.backward()
                     optimizer.step()
 
-            elif label_i == 2:
+            elif label_i == 1:
 
                 if aid_i not in question2answer[qid_i]["neg"]:
                     question2answer[qid_i]["neg"][aid_i] = {}
@@ -269,16 +276,23 @@ while True:
             pw_model.eval()
             dev_iter.init_epoch()
             n_dev_correct = 0
+            n_dev_total = 0
             dev_losses = []
             instance = []
-            dev_correct_num = 0
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
                 # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 output = pw_model.convModel(dev_batch)
                 output = pw_model.linearLayer(output)
-                output[output>0.5] = 1
-                output[output<=0.5] = 0
+                print("============output:============")
+                print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
+                output[output>0.5] = 2
+                output[output<=0.5] = 1
+                output = Variable(output.data.long())
+                # print(output.size())
+                # print(dev_batch.label.size())
+                # print(dev_batch.label)
                 n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
+                n_dev_total += dev_batch.batch_size
                 # dev_loss_num += loss.data[0]
                 # true_label_array = index2lab
                 # el[np.transpose(dev_batch.label.cpu().data.numpy())]
@@ -302,9 +316,10 @@ while True:
             #                               sum(dev_losses) / len(dev_losses), train_acc, dev_map))
 
             # Update validation results
-            if dev_correct_num < n_dev_correct:
+            print(best_dev_correct/n_dev_total)
+            if best_dev_correct < n_dev_correct:
                 iters_not_improved = 0
-                dev_correct_num = n_dev_correct
+                best_dev_correct = n_dev_correct
                 snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
                 torch.save(model, snapshot_path)
             else:
@@ -317,8 +332,8 @@ while True:
             # print progress message
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
-                                      100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
-                                      dev_correct_num, ' ' * 12))
+                                      100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 0,
+                                      best_dev_correct, ' ' * 0))
             # print(log_template.format(time.time() - start,
             #                           epoch, iterations, 1 + batch_idx, len(train_iter),
             #                           100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
