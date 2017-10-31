@@ -6,7 +6,7 @@ def evaluate(instances, valid, config):
     with open('{}.{}.run.txt'.format(valid, config), 'w') as run, open('{}.{}.qrel.txt'.format(valid, config), 'w') as qrel:
         i = 0
         for instance in sorted_instances:
-            qid, predicted, score, gold = instance[0], instance[1], instance[2], instance[3]
+            qid, score, gold = instance[0], instance[1], instance[2]
 
             # 32.1 0 1 0 0.13309887051582336 smmodel
             run.write('{} 0 {} 0 {} sm_model\n'.format(qid, i, score))

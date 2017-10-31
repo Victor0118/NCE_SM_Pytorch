@@ -62,6 +62,7 @@ class PairwiseConv(nn.Module):
         # self.linearLayer = self:LinearLayer() ??
         # self.convModel = SmPlusPlus(config)
         self.convModel = model
+        self.dropout = nn.Dropout(0.5)
         self.linearLayer = nn.Linear(model.n_hidden, 1)
         self.posModel = self.convModel
         # share or copy ??
@@ -69,10 +70,11 @@ class PairwiseConv(nn.Module):
         # self.negModel = copy.deepcopy(self.posModel)
         self.negModel = self.convModel
 
-
     def forward(self, input):
         pos = self.posModel(input[0])
         neg = self.negModel(input[1])
+        pos = self.dropout(pos)
+        neg = self.dropout(neg)
         pos = self.linearLayer(pos)
         neg = self.linearLayer(neg)
         combine = torch.cat([pos, neg], 0)
@@ -190,6 +192,10 @@ class SmPlusPlus(nn.Module):
         x.append(x_ext)
         x = torch.cat(x, 1)
         x = F.tanh(self.combined_feature_vector(x))
-        x = self.dropout(x)
+
+        '''
+        whether and where I add the dropout layer is a question
+        '''
+        # x = self.dropout(x)
         # x = self.hidden(x)
         return x

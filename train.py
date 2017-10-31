@@ -200,6 +200,8 @@ while True:
     '''
     batch size issue: train always with size 1, but test with size batch_size
                     padding is a choice (add or delete them in both train and test)
+                    but currently if I add padding in the train stage, it seems that the 
+                    it will affect a lot and result into all the same output of the convModel
     '''
     acc = 0
     tot = 0
@@ -299,16 +301,17 @@ while True:
             n_dev_total = 0
             dev_losses = []
             instance = []
-            print("============output:============")
+            # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
                 # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
-                output = pw_model.convModel(dev_batch)
-                output = pw_model.linearLayer(output)
-                print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
-                output[output>0.5] = 2
-                output[output<=0.5] = 1
+                scores = pw_model.convModel(dev_batch)
+                scores = pw_model.linearLayer(scores)
+                # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
+                output = scores
+                output[scores>0.5] = 2
+                output[scores<=0.5] = 1
                 output = Variable(output.data.long())
-                # print(output.size())
+                # print(output.size
                 # print(dev_batch.label.size())
                 # print(dev_batch.label)
                 n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
@@ -327,21 +330,28 @@ while True:
                 # for i in range(dev_batch.batch_size):
                 #     this_qid, predicted_label, score, gold_label = qid_array[i], label_array[i], score_array[i], true_label_array[i]
                 #     instance.append((this_qid, predicted_label, score, gold_label))
-
+                qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
+                score_array = scores.cpu().data.numpy()
+                true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
+                for i in range(dev_batch.batch_size):
+                    this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
+                    instance.append((this_qid, score, gold_label))
             # dev_map, dev_mrr = evaluate(instance, 'valid', config.mode)
 
-            # print(dev_log_template.format(time.time() - start,
-            #                               epoch, iterations, 1 + batch_idx, len(train_iter),
-            #                               100. * (1 + batch_idx) / len(train_iter), loss.data[0],
-            #                               sum(dev_losses) / len(dev_losses), train_acc, dev_map))
+            test_mode = "dev"
+            dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
+            print(dev_log_template.format(time.time() - start,
+                                          epoch, iterations, 1 + batch_idx, len(train_iter),
+                                          100. * (1 + batch_idx) / len(train_iter), loss.data[0],
+                                          sum(dev_losses) / len(dev_losses), dev_map, dev_mrr))
 
             # Update validation results
-            print(best_dev_correct/n_dev_total)
-            if best_dev_correct < n_dev_correct:
+            # print(best_dev_correct/n_dev_total)
+            if best_dev_correct < n_dev_correct/n_dev_total:
                 iters_not_improved = 0
                 best_dev_correct = n_dev_correct
                 snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
-                torch.save(model, snapshot_path)
+                torch.save(pw_model, snapshot_path)
             else:
                 iters_not_improved += 1
                 if iters_not_improved >= args.patience:

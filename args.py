@@ -11,7 +11,7 @@ def get_args():
     parser.add_argument('--seed', type=int, default=3435)
     parser.add_argument('--dataset', type=str, default='TREC')
     parser.add_argument('--resume_snapshot', type=str, default=None)
-    parser.add_argument('--dev_every', type=int, default=300)
+    parser.add_argument('--dev_every', type=int, default=100)
     parser.add_argument('--log_every', type=int, default=10)
     parser.add_argument('--patience', type=int, default=50)
     parser.add_argument('--save_path', type=str,    default='saves')
