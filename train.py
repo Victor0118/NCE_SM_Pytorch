@@ -203,8 +203,7 @@ while True:
                     but currently if I add padding in the train stage, it seems that the 
                     it will affect a lot and result into all the same output of the convModel
     '''
-    acc = 0
-    tot = 0
+
     for batch_idx, batch in enumerate(train_iter):
         iterations += 1
         loss_num = 0
@@ -216,6 +215,8 @@ while True:
         features = pw_model.convModel(batch)
         # print(batch.label)
         # exit(1)
+        acc = 0
+        tot = 0
         for i in range(batch.batch_size):
             label_i = batch.label[i].cpu().data.numpy()[0]
             question_i = batch.question[i]
@@ -311,7 +312,7 @@ while True:
                 output[scores>0.5] = 2
                 output[scores<=0.5] = 1
                 output = Variable(output.data.long())
-                # print(output.size
+                # print(output.size)
                 # print(dev_batch.label.size())
                 # print(dev_batch.label)
                 n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
@@ -343,7 +344,7 @@ while True:
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
                                           100. * (1 + batch_idx) / len(train_iter), loss.data[0],
-                                          sum(dev_losses) / len(dev_losses), dev_map, dev_mrr))
+                                          dev_map, dev_mrr, acc/tot))
 
             # Update validation results
             # print(best_dev_correct/n_dev_total)
