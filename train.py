@@ -153,17 +153,21 @@ def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
     dis_list = []
     pos_feature = pos_feature.data.cpu().numpy()
     pos_feature_norm = pos_feature / np.sqrt(sum(pos_feature ** 2))
+    neg_list = []
     for key in neg_dict:
         if distance == "l2":
             dis = np.sqrt(np.sum((np.array(pos_feature) - neg_dict[key]["feature"]) ** 2))
         elif distance == "cosine":
-            feat_norm = normalize(np.array(neg_dict[key]["feature"]), norm='l2')
+            # feat_norm = normalize(np.array(neg_dict[key]["feature"].reshape(-1,1)), norm='l2')
+            neg_feature = np.array(neg_dict[key]["feature"])
+            feat_norm = neg_feature / np.sqrt(sum(neg_feature ** 2))
             dis = 1 - feat_norm.dot(pos_feature_norm)
         dis_list.append(dis)
+        neg_list.append(key)
 
     k = min(k, len(neg_dict))
     min_list = heapq.nsmallest(k, enumerate(dis_list), key=operator.itemgetter(1))
-    min_id_list = [x[0] for x in min_list]
+    min_id_list = [neg_list[x[0]] for x in min_list]
     return min_id_list
 
 
@@ -205,6 +209,8 @@ while True:
                     it will affect a lot and result into all the same output of the convModel
     '''
 
+    acc = 0
+    tot = 0
     for batch_idx, batch in enumerate(train_iter):
         if epoch != 1:
             iterations += 1
@@ -217,14 +223,10 @@ while True:
         features = pw_model.convModel(batch)
         # print(batch.label)
         # exit(1)
-        acc = 0
-        tot = 0
         for i in range(batch.batch_size):
             label_i = batch.label[i].cpu().data.numpy()[0]
             question_i = batch.question[i]
             # question_i = question_i[question_i!=1] # remove padding 1 <pad>
-            # print(torch.max(question_i))
-            # exit(1)
             answer_i = batch.answer[i]
             # answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
             ext_feat_i = batch.ext_feat[i]
@@ -235,7 +237,7 @@ while True:
                 question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
             '''
             # in the dataset, "1" for positive, "0" for negative
-            # in the code, 2 for positive and 1 for negative?
+            # in the code, 2 for positive and 1 for negative?   
             '''
             if label_i == 2:
 
@@ -250,9 +252,10 @@ while True:
                     continue
                 # random generate sample in the first training epoch
                 elif epoch == 2:
-                    near_list = get_random_neg_id(q2neg, qid_i, k=8)
+                    near_list = get_random_neg_id(q2neg, qid_i, k=3)
                 else:
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=8)
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=3)
+
                 # print(near_list)
                 new_pos = get_batch(question_i, answer_i, ext_feat_i)
                 # pass
@@ -260,7 +263,7 @@ while True:
                 # print("near_list:",[index2aid[x] for x in near_list])
                 for near_id in near_list:
                     near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
-                    near_answer = near_answer[near_answer != 1]
+                    # near_answer = near_answer[near_answer != 1] # remove padding 1 <pad>
                     ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
                     new_neg = get_batch(question_i, near_answer, ext_feat_neg)
                     # print(new_pos.answer.size()) # [1, 17]
@@ -314,15 +317,42 @@ while True:
             '''
             if 'new_neg' in locals():
                 output = pw_model([new_neg, new_pos])
-                print(output[0].data.numpy()[0])
-                print(output[1].data.numpy()[0])
+                print(output[0].data.numpy()[0], output[1].data.numpy()[0])
+                if epoch >= 3:
+                    print("qid:", index2qid[qid_i], " near_list:", [index2aid[x] for x in near_list])
+                # output1 = pw_model.convModel(new_pos)
+                # output1 = pw_model.linearLayer(output1)
+                # output2 = pw_model.convModel(new_neg)
+                # output2 = pw_model.linearLayer(output2)
+                # print(output1.data.numpy()[0], output2.data.numpy()[0])
+                # output = pw_model([new_pos, new_neg])
+                # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
 
             # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
+                '''
+                # dev singlely or in a batch?
+                but dev singlely is equal to dev_size = 1
+                '''
+
+                # for i in range(batch.batch_size):
+                #     score = pw_model.convModel(dev_batch[i])
+                #     score = pw_model.linearLayer(score)
+                #     label_i = batch.label[i].cpu().data.numpy()[0]
+                #     if label_i == 1:
+                #         new_pos =
+                #
+                # new_neg = score
+
+                # output = pw_model([new_neg, new_pos])
+                # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
+
                 # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 scores = pw_model.convModel(dev_batch)
                 # scores = pw_model.dropout(scores) # no drop out in the dev/test step
                 scores = pw_model.linearLayer(scores)
+                # print(scores)
+                # print(dev_batch.label)
                 # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
                 output = scores.clone()
                 output[scores>0] = 2
@@ -357,15 +387,15 @@ while True:
 
             test_mode = "dev"
             dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
-            tot = 1 if tot == 0 else tot
+
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
-                                          100. * (1 + batch_idx) / len(train_iter), 0,
-                                          dev_map, dev_mrr, acc/tot))
+                                          100. * (1 + batch_idx) / len(train_iter),
+                                          dev_map, dev_mrr, acc, tot))
 
             # Update validation results
             # print(best_dev_correct/n_dev_total)
-            if best_dev_correct < n_dev_correct/n_dev_total:
+            if best_dev_correct < n_dev_correct/n_dev_total or True:
                 iters_not_improved = 0
                 best_dev_correct = n_dev_correct/n_dev_total
                 snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
@@ -377,12 +407,14 @@ while True:
                     break
 
         if iterations % args.log_every == 1 and epoch != 1:
+
             # print progress message
-            tot = 1 if tot==0 else tot
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
-                                      100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 0,
-                                      best_dev_correct, acc/tot))
+                                      100. * (1 + batch_idx) / len(train_iter), loss_num,
+                                      best_dev_correct, acc, tot))
+            acc = 0
+            tot = 0
             # print(log_template.format(time.time() - start,
             #                           epoch, iterations, 1 + batch_idx, len(train_iter),
             #                           100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
