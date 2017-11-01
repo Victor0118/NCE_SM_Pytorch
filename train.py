@@ -151,12 +151,13 @@ index2answer = np.array(ANSWER.vocab.itos)
 
 def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
     dis_list = []
+    pos_feature = pos_feature.data.cpu().numpy()
     pos_feature_norm = pos_feature / np.sqrt(sum(pos_feature ** 2))
     for key in neg_dict:
         if distance == "l2":
-            dis = np.sqrt(np.sum((np.array(pos_feature) - neg_dict[key]) ** 2))
+            dis = np.sqrt(np.sum((np.array(pos_feature) - neg_dict[key]["feature"]) ** 2))
         elif distance == "cosine":
-            feat_norm = normalize(np.array(neg_dict[key]), norm='l2')
+            feat_norm = normalize(np.array(neg_dict[key]["feature"]), norm='l2')
             dis = 1 - feat_norm.dot(pos_feature_norm)
         dis_list.append(dis)
 
@@ -205,10 +206,11 @@ while True:
     '''
 
     for batch_idx, batch in enumerate(train_iter):
-        iterations += 1
+        if epoch != 1:
+            iterations += 1
         loss_num = 0
         # model.train();
-        pw_model.train();
+        pw_model.train()
         optimizer.zero_grad()
 
         new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
@@ -269,6 +271,9 @@ while True:
                     # print("output:",output.data.numpy()[0][0], output.data.numpy()[1][0])
                     # loss = pairwiseLoss(output)
                     loss = marginRankingLoss(output[0], output[1], torch.autograd.Variable(torch.ones(1)))
+                    # print(output[0].data.numpy()[0])
+                    # print(output[1].data.numpy()[0])
+                    # print(output[0].data.numpy()[0] > output[1].data.numpy()[0])
                     if(output[0].data.numpy()[0] > output[1].data.numpy()[0]):
                         acc += 1
                     tot += 1
@@ -284,6 +289,7 @@ while True:
                     question2answer[qid_i]["neg"][aid_i] = {}
 
                 question2answer[qid_i]["neg"][aid_i]["answer"] = answer_i
+                question2answer[qid_i]["neg"][aid_i]["feature"] = features[i].data.cpu().numpy()
                 question2answer[qid_i]["neg"][aid_i]["ext_feat"] = ext_feat_i
 
                 if epoch == 1:
@@ -302,15 +308,25 @@ while True:
             n_dev_total = 0
             dev_losses = []
             instance = []
+
+            '''
+            debug code
+            '''
+            if 'new_neg' in locals():
+                output = pw_model([new_neg, new_pos])
+                print(output[0].data.numpy()[0])
+                print(output[1].data.numpy()[0])
+
             # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
                 # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 scores = pw_model.convModel(dev_batch)
+                # scores = pw_model.dropout(scores) # no drop out in the dev/test step
                 scores = pw_model.linearLayer(scores)
                 # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
-                output = scores
-                output[scores>0.5] = 2
-                output[scores<=0.5] = 1
+                output = scores.clone()
+                output[scores>0] = 2
+                output[scores<=0] = 1
                 output = Variable(output.data.long())
                 # print(output.size)
                 # print(dev_batch.label.size())
@@ -332,7 +348,7 @@ while True:
                 #     this_qid, predicted_label, score, gold_label = qid_array[i], label_array[i], score_array[i], true_label_array[i]
                 #     instance.append((this_qid, predicted_label, score, gold_label))
                 qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
-                score_array = scores.cpu().data.numpy()
+                score_array = scores.cpu().data.numpy().reshape(-1)
                 true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
                 for i in range(dev_batch.batch_size):
                     this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
@@ -341,16 +357,17 @@ while True:
 
             test_mode = "dev"
             dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
+            tot = 1 if tot == 0 else tot
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
-                                          100. * (1 + batch_idx) / len(train_iter), loss.data[0],
+                                          100. * (1 + batch_idx) / len(train_iter), 0,
                                           dev_map, dev_mrr, acc/tot))
 
             # Update validation results
             # print(best_dev_correct/n_dev_total)
             if best_dev_correct < n_dev_correct/n_dev_total:
                 iters_not_improved = 0
-                best_dev_correct = n_dev_correct
+                best_dev_correct = n_dev_correct/n_dev_total
                 snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
                 torch.save(pw_model, snapshot_path)
             else:
@@ -361,6 +378,7 @@ while True:
 
         if iterations % args.log_every == 1 and epoch != 1:
             # print progress message
+            tot = 1 if tot==0 else tot
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 0,

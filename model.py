@@ -37,7 +37,7 @@ class PairwiseLossCriterion(Function):
 
     def forward(self, input, weight = None, bias = None):
         self.input = input
-        print(self.input)
+        # print(self.input)
         return torch.max(torch.zeros(1), 1 - (input[0] - input[1]))/2
 
     def backward(self, grad_output):
@@ -71,8 +71,8 @@ class PairwiseConv(nn.Module):
         self.negModel = self.convModel
 
     def forward(self, input):
-        pos = self.posModel(input[0])
-        neg = self.negModel(input[1])
+        pos = self.convModel(input[0])
+        neg = self.convModel(input[1])
         pos = self.dropout(pos)
         neg = self.dropout(neg)
         pos = self.linearLayer(pos)

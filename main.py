@@ -77,7 +77,6 @@ index2qid = np.array(QID.vocab.itos)
 def predict(test_mode, dataset_iter):
     model.eval()
     dataset_iter.init_epoch()
-
     instance = []
     for dev_batch_idx, dev_batch in enumerate(dataset_iter):
         qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
@@ -85,11 +84,15 @@ def predict(test_mode, dataset_iter):
 
         # scores = model(dev_batch)
         output = model.convModel(dev_batch)
-        scores = model.linearLayer(output)
 
+        scores = model.linearLayer(output)
+        # print(output)
+        # print(scores)
+        # exit(1)
         # index_label = np.transpose(torch.max(scores, 1)[1].view(dev_batch.label.size()).cpu().data.numpy())
         # label_array = index2label[index_label]
-        score_array = scores.cpu().data.numpy()
+        score_array = scores.cpu().data.numpy().reshape(-1)
+
         # print and write the result
         for i in range(dev_batch.batch_size):
             this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
