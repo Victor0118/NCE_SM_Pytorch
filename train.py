@@ -217,7 +217,7 @@ while True:
         loss_num = 0
         # model.train();
         pw_model.train()
-        optimizer.zero_grad()
+
 
         new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
         features = pw_model.convModel(batch)
@@ -252,9 +252,10 @@ while True:
                     continue
                 # random generate sample in the first training epoch
                 elif epoch == 2:
-                    near_list = get_random_neg_id(q2neg, qid_i, k=3)
+                    near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                 else:
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=3)
+                    debug_qid = qid_i
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=args.neg_num)
 
                 # print(near_list)
                 new_pos = get_batch(question_i, answer_i, ext_feat_i)
@@ -262,6 +263,7 @@ while True:
                 # print("===========new_pos===========:", index2qid[qid_i])
                 # print("near_list:",[index2aid[x] for x in near_list])
                 for near_id in near_list:
+                    optimizer.zero_grad()
                     near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
                     # near_answer = near_answer[near_answer != 1] # remove padding 1 <pad>
                     ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
@@ -290,8 +292,8 @@ while True:
 
                 if aid_i not in question2answer[qid_i]["neg"]:
                     question2answer[qid_i]["neg"][aid_i] = {}
+                    question2answer[qid_i]["neg"][aid_i]["answer"] = answer_i
 
-                question2answer[qid_i]["neg"][aid_i]["answer"] = answer_i
                 question2answer[qid_i]["neg"][aid_i]["feature"] = features[i].data.cpu().numpy()
                 question2answer[qid_i]["neg"][aid_i]["ext_feat"] = ext_feat_i
 
@@ -312,21 +314,22 @@ while True:
             dev_losses = []
             instance = []
 
-            '''
-            debug code
-            '''
+            # '''
+            # debug code
+            # '''
             if 'new_neg' in locals():
-                output = pw_model([new_neg, new_pos])
-                print(output[0].data.numpy()[0], output[1].data.numpy()[0])
-                if epoch >= 3:
-                    print("qid:", index2qid[qid_i], " near_list:", [index2aid[x] for x in near_list])
-                # output1 = pw_model.convModel(new_pos)
-                # output1 = pw_model.linearLayer(output1)
-                # output2 = pw_model.convModel(new_neg)
-                # output2 = pw_model.linearLayer(output2)
-                # print(output1.data.numpy()[0], output2.data.numpy()[0])
-                # output = pw_model([new_pos, new_neg])
+                # output = pw_model([new_neg, new_pos])
                 # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
+                if epoch >= 3:
+                    print("qid:", index2qid[debug_qid], " near_list:", [index2aid[x] for x in near_list])
+
+            #     output1 = pw_model.convModel(new_pos)
+            #     output1 = pw_model.linearLayer(output1)
+            #     output2 = pw_model.convModel(new_neg)
+            #     output2 = pw_model.linearLayer(output2)
+            #     print(output1.data.numpy()[0], output2.data.numpy()[0])
+            #     output = pw_model([new_pos, new_neg])
+            #     print(output[0].data.numpy()[0], output[1].data.numpy()[0])
 
             # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
@@ -354,15 +357,15 @@ while True:
                 # print(scores)
                 # print(dev_batch.label)
                 # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
-                output = scores.clone()
-                output[scores>0] = 2
-                output[scores<=0] = 1
-                output = Variable(output.data.long())
+                # output = scores.clone()
+                # output[scores>0] = 2
+                # output[scores<=0] = 1
+                # output = Variable(output.data.long())
                 # print(output.size)
                 # print(dev_batch.label.size())
                 # print(dev_batch.label)
-                n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
-                n_dev_total += dev_batch.batch_size
+                # n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
+                # n_dev_total += dev_batch.batch_size
                 # dev_loss_num += loss.data[0]
                 # true_label_array = index2lab
                 # el[np.transpose(dev_batch.label.cpu().data.numpy())]
@@ -395,11 +398,12 @@ while True:
 
             # Update validation results
             # print(best_dev_correct/n_dev_total)
-            if best_dev_correct < n_dev_correct/n_dev_total or True:
+            snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
+            torch.save(pw_model, snapshot_path)
+
+            if best_dev_map < dev_map:
                 iters_not_improved = 0
-                best_dev_correct = n_dev_correct/n_dev_total
-                snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
-                torch.save(pw_model, snapshot_path)
+                best_dev_map = dev_map
             else:
                 iters_not_improved += 1
                 if iters_not_improved >= args.patience:
@@ -409,10 +413,11 @@ while True:
         if iterations % args.log_every == 1 and epoch != 1:
 
             # print progress message
+            n_dev_total = 1 if n_dev_total == 0 else n_dev_total
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
-                                      100. * (1 + batch_idx) / len(train_iter), loss_num,
-                                      best_dev_correct, acc, tot))
+                                      100. * (1 + batch_idx) / len(train_iter), 0,
+                                      0, acc, tot))
             acc = 0
             tot = 0
             # print(log_template.format(time.time() - start,
