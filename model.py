@@ -77,7 +77,7 @@ class PairwiseConv(nn.Module):
         neg = self.dropout(neg)
         pos = self.linearLayer(pos)
         neg = self.linearLayer(neg)
-        combine = torch.cat([pos, neg], 0)
+        combine = torch.cat([pos, neg], 1)
         return combine
 
 class SmPlusPlus(nn.Module):

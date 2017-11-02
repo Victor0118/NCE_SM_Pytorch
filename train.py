@@ -14,6 +14,7 @@ from sklearn.preprocessing import normalize
 import operator
 import heapq
 from torch.autograd import Variable
+from torch.nn import functional as F
 
 from evaluate import evaluate
 import sys
@@ -180,13 +181,15 @@ def get_random_neg_id(q2neg, qid_i, k=5):
     return ran
 
 
-def get_batch(question, answer, ext_feat):
+def get_batch(question, answer, ext_feat, size):
     new_batch = data.Batch()
-    new_batch.batch_size = 1
+    new_batch.batch_size = size
     new_batch.dataset = batch.dataset
-    setattr(new_batch, "answer", torch.stack([answer]))
-    setattr(new_batch, "question", torch.stack([question]))
-    setattr(new_batch, "ext_feat", torch.stack([ext_feat]))
+    # print(len(answer))
+    # print(answer[0].size())
+    setattr(new_batch, "answer", torch.stack(answer))
+    setattr(new_batch, "question", torch.stack(question))
+    setattr(new_batch, "ext_feat", torch.stack(ext_feat))
     return new_batch
 
 
@@ -217,7 +220,7 @@ while True:
         loss_num = 0
         # model.train();
         pw_model.train()
-
+        total_sample_per_batch = 0
 
         new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
         features = pw_model.convModel(batch)
@@ -257,36 +260,68 @@ while True:
                     debug_qid = qid_i
                     near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=args.neg_num)
 
-                # print(near_list)
-                new_pos = get_batch(question_i, answer_i, ext_feat_i)
-                # pass
-                # print("===========new_pos===========:", index2qid[qid_i])
-                # print("near_list:",[index2aid[x] for x in near_list])
-                for near_id in near_list:
+                neg_size = len(near_list)
+                if neg_size != 0:
+                    # print(near_list)
+                    # print("near_list:",[index2aid[x] for x in near_list])
+                    new_train_pos = {"answer":[], "question":[], "ext_feat":[]}
+                    new_train_neg = {"answer": [], "question": [], "ext_feat": []}
+                    max_len = 0
+                    answer_i = answer_i[answer_i != 1]
+                    question_i = question_i[question_i != 1]
+                    for near_id in near_list:
+                        new_train_pos["answer"].append(answer_i)
+                        new_train_pos["question"].append(question_i)
+                        new_train_pos["ext_feat"].append(ext_feat_i)
+
+                        near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
+                        near_answer = near_answer[near_answer!=1]
+                        if near_answer.size()[0] > max_len:
+                            max_len = near_answer.size()[0]
+                        ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
+                        new_train_neg["answer"].append(near_answer)
+                        new_train_neg["question"].append(question_i)
+                        new_train_neg["ext_feat"].append(ext_feat_neg)
+
+                    for j in range(len(new_train_neg["answer"])):
+                        new_train_neg["answer"][j] = F.pad(new_train_neg["answer"][j],
+                                                           (0, max_len - new_train_neg["answer"][j].size()[0]), value=1)
+                        new_train_pos["answer"][j] = F.pad(new_train_pos["answer"][j],
+                                                           (0, max_len - new_train_pos["answer"][j].size()[0]), value=1)
+
+
+                    pos_batch = get_batch(new_train_pos["question"], new_train_pos["answer"], new_train_pos["ext_feat"], neg_size)
+                    neg_batch = get_batch(new_train_neg["question"], new_train_neg["answer"], new_train_neg["ext_feat"], neg_size)
+
                     optimizer.zero_grad()
-                    near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
                     # near_answer = near_answer[near_answer != 1] # remove padding 1 <pad>
-                    ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
-                    new_neg = get_batch(question_i, near_answer, ext_feat_neg)
                     # print(new_pos.answer.size()) # [1, 17]
                     # print(new_pos.batch_size)
                     # print(new_pos.question.size())  # [1, 50]
                     # print(new_pos.ext_feat.size())  # [1, 4]
-                    output = pw_model([new_pos, new_neg])
+                    output = pw_model([pos_batch, neg_batch])
+                    cmp = output[:,0] > output[:,1]
+                    acc += sum(cmp.data.cpu().numpy())
+                    tot += neg_size
+                    total_sample_per_batch += neg_size
+                    cmp = output[:, 0] <= output[:, 1]
+                    near_list = np.array(near_list)
+                    false_samples = (qid_i, near_list[cmp.data.cpu().numpy()])
                     # print("output:",output.data.numpy()[0][0], output.data.numpy()[1][0])
                     # loss = pairwiseLoss(output)
-                    loss = marginRankingLoss(output[0], output[1], torch.autograd.Variable(torch.ones(1)))
+                    loss = marginRankingLoss(output[:,0], output[:,1], torch.autograd.Variable(torch.ones(1)))
                     # print(output[0].data.numpy()[0])
                     # print(output[1].data.numpy()[0])
                     # print(output[0].data.numpy()[0] > output[1].data.numpy()[0])
-                    if(output[0].data.numpy()[0] > output[1].data.numpy()[0]):
-                        acc += 1
-                    tot += 1
+                    # if(output[0].data.numpy()[0] > output[1].data.numpy()[0]):
+                    #     acc += 1
+                    # tot += 1
                     # print("loss:",loss.data.numpy()[0])
                     loss_num += loss.data.numpy()[0]
                     # print(loss_num)
                     loss.backward()
                     optimizer.step()
+
 
             elif label_i == 1:
 
@@ -317,9 +352,10 @@ while True:
             # '''
             # debug code
             # '''
-            if 'new_neg' in locals():
+            if 'false_samples' in locals():
                 # output = pw_model([new_neg, new_pos])
                 # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
+                print("false_samples:",false_samples)
                 if epoch >= 3:
                     print("qid:", index2qid[debug_qid], " near_list:", [index2aid[x] for x in near_list])
 
@@ -394,7 +430,7 @@ while True:
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
                                           100. * (1 + batch_idx) / len(train_iter),
-                                          dev_map, dev_mrr, acc, tot))
+                                          dev_map, dev_mrr, acc, acc/tot))
 
             # Update validation results
             # print(best_dev_correct/n_dev_total)
@@ -417,7 +453,7 @@ while True:
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter), 0,
-                                      0, acc, tot))
+                                      loss_num/total_sample_per_batch, acc, acc/tot))
             acc = 0
             tot = 0
             # print(log_template.format(time.time() - start,
