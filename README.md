@@ -70,7 +70,7 @@ Metric |rand   |static|non-static|multichannel
 MAP    |0.7441 |0.7524|0.7688    |0.7641
 MRR    |0.8172 |0.8012|0.8144    |0.8174
 
-##### Max Neg Sample with neg_num = 8
+##### Max Neg Sample
 
 To be added
 
