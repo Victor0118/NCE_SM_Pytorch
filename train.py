@@ -126,10 +126,11 @@ parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 
 # the SM model originally follows SGD but Adadelta is used here
 optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
+# A good lr is required to use Adam
 # optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-8)
 criterion = nn.CrossEntropyLoss()
 pairwiseLoss = PairwiseLossCriterion()
-marginRankingLoss = nn.MarginRankingLoss(margin = 2, size_average = False)
+marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = False)
 
 early_stop = False
 best_dev_map = 0
@@ -153,6 +154,7 @@ index2question = np.array(QUESTION.vocab.itos)
 index2answer = np.array(ANSWER.vocab.itos)
 
 
+# get the nearest negative samples to the positive sample by computing the feature difference
 def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
     dis_list = []
     pos_feature = pos_feature.data.cpu().numpy()
@@ -174,7 +176,7 @@ def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
     min_id_list = [neg_list[x[0]] for x in min_list]
     return min_id_list
 
-
+# get the negative samples randomly
 def get_random_neg_id(q2neg, qid_i, k=5):
     # question 1734 has no neg answer
     if qid_i not in q2neg:
@@ -183,13 +185,11 @@ def get_random_neg_id(q2neg, qid_i, k=5):
     ran = random.sample(q2neg[qid_i], k)
     return ran
 
-
+# pack the lists of question/answer/ext_feat into a torchtext batch
 def get_batch(question, answer, ext_feat, size):
     new_batch = data.Batch()
     new_batch.batch_size = size
     new_batch.dataset = batch.dataset
-    # print(len(answer))
-    # print(answer[0].size())
     setattr(new_batch, "answer", torch.stack(answer))
     setattr(new_batch, "question", torch.stack(question))
     setattr(new_batch, "ext_feat", torch.stack(ext_feat))
@@ -201,7 +201,7 @@ question2answer = {} # a dict from qid to the information of both pos and neg an
 best_dev_correct = 0
 
 
-
+false_samples = {}
 while True:
     if early_stop:
         print("Early Stopping. Epoch: {}, Best Dev Loss: {}".format(epoch, best_dev_loss))
@@ -209,27 +209,20 @@ while True:
     epoch += 1
     train_iter.init_epoch()
     '''
-    batch size issue: train always with size 1, but test with size batch_size
-                    padding is a choice (add or delete them in both train and test)
-                    but currently if I add padding in the train stage, it seems that the 
-                    it will affect a lot and result into all the same output of the convModel
+    batch size issue: padding is a choice (add or delete them in both train and test)
+                    associated with the batch size. Currently, it seems to affect the result a lot.
     '''
-
     acc = 0
     tot = 0
-    false_samples = {}
     for batch_idx, batch in enumerate(train_iter):
         if epoch != 1:
             iterations += 1
         loss_num = 0
-        # model.train();
         pw_model.train()
         total_sample_per_batch = 0
 
         new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
         features = pw_model.convModel(batch)
-        # print(batch.label)
-        # exit(1)
         new_train_pos = {"answer": [], "question": [], "ext_feat": []}
         new_train_neg = {"answer": [], "question": [], "ext_feat": []}
         max_len_q = 0
@@ -251,8 +244,8 @@ while True:
             if qid_i not in question2answer:
                 question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
             '''
-            # in the dataset, "1" for positive, "0" for negative
-            # in the code, 2 for positive and 1 for negative?   
+            # in the dataset, "1" is positive, "0" is negative
+            # in the code (after indexed by torchtext), 2 is positive and 1 is negative  
             '''
             if label_i == 2:
 
@@ -262,7 +255,7 @@ while True:
                 question2answer[qid_i]["pos"][aid_i]["answer"] = answer_i
                 question2answer[qid_i]["pos"][aid_i]["ext_feat"] = ext_feat_i
 
-                # get neg samples
+                # get neg samples in the first epoch but do not train
                 if epoch == 1:
                     continue
                 # random generate sample in the first training epoch
@@ -276,9 +269,6 @@ while True:
 
                 neg_size = len(near_list)
                 if neg_size != 0:
-                    # print(near_list)
-                    # print("near_list:",[index2aid[x] for x in near_list])
-
                     answer_i = answer_i[answer_i != 1]
                     question_i = question_i[question_i != 1]
                     for near_id in near_list:
@@ -290,7 +280,6 @@ while True:
                         new_train_pos["ext_feat"].append(ext_feat_i)
 
                         near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
-                        near_answer = near_answer[near_answer!=1]
                         if near_answer.size()[0] > max_len_q:
                             max_len_q = question_i.size()[0]
                         if near_answer.size()[0] > max_len_a:
@@ -315,6 +304,7 @@ while True:
 
                     q2neg[qid_i].append(aid_i)
 
+        # pack the selected pos and neg samples into the torchtext batch and train
         if epoch != 1:
             true_batch_size = len(new_train_neg["answer"])
             if true_batch_size != 0:
@@ -344,9 +334,12 @@ while True:
                 acc += sum(cmp.data.cpu().numpy())
                 tot += true_batch_size
                 total_sample_per_batch += true_batch_size
+
+                '''
+                debug code
+                '''
                 cmp = output[:, 0] <= output[:, 1]
                 cmp = np.array(cmp.data.cpu().numpy(), dtype=bool)
-
                 batch_near_list = np.array(batch_near_list)
                 batch_aid = np.array(batch_aid)
                 batch_qid = np.array(batch_qid)
@@ -359,25 +352,12 @@ while True:
                         false_samples[pair] += 1
                     else:
                         false_samples[pair] = 1
-                # print(cmp)
-                # print(batch_near_list)
-                # print(batch_near_list[cmp.data.cpu().numpy()])
-                # exit(1)
                 # print("output:",output.data.numpy()[0][0], output.data.numpy()[1][0])
                 # loss = pairwiseLoss(output)
 
 
                 loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
-                # print(output[0].data.numpy()[0])
-                # print(output[1].data.numpy()[0])
-                # print(output[0].data.numpy()[0] > output[1].data.numpy()[0])
-                # if(output[0].data.numpy()[0] > output[1].data.numpy()[0]):
-                #     acc += 1
-                # tot += 1
-                # print("loss:",loss.data.numpy()[0])
-                # print("loss:", loss)
                 loss_num += loss.data.numpy()[0]
-                # print(loss_num)
                 loss.backward()
                 optimizer.step()
 
@@ -392,9 +372,9 @@ while True:
             dev_losses = []
             instance = []
 
-            # '''
-            # debug code
-            # '''
+            '''
+            debug code
+            '''
             if 'false_samples' in locals():
                 # output = pw_model([new_neg, new_pos])
                 # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
@@ -406,18 +386,10 @@ while True:
                 # if epoch >= 3:
                 #     print("qid:", index2qid[debug_qid], " near_list:", [index2aid[x] for x in near_list])
 
-            #     output1 = pw_model.convModel(new_pos)
-            #     output1 = pw_model.linearLayer(output1)
-            #     output2 = pw_model.convModel(new_neg)
-            #     output2 = pw_model.linearLayer(output2)
-            #     print(output1.data.numpy()[0], output2.data.numpy()[0])
-            #     output = pw_model([new_pos, new_neg])
-            #     print(output[0].data.numpy()[0], output[1].data.numpy()[0])
-
             # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
                 '''
-                # dev singlely or in a batch?
+                # dev singlely or in a batch? -> in a batch
                 but dev singlely is equal to dev_size = 1
                 '''
                 # for i in range(batch.batch_size):
@@ -436,7 +408,6 @@ while True:
                 scores = pw_model.convModel(dev_batch)
                 # scores = pw_model.dropout(scores) # no drop out in the dev/test step
                 scores = pw_model.linearLayer(scores)
-                # print(scores)
                 # print(dev_batch.label)
                 # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
                 # output = scores.clone()
