@@ -127,11 +127,15 @@ optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight
 marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = False)
 
 early_stop = False
-best_dev_map = 0
-best_dev_loss = 0
 iterations = 0
 iters_not_improved = 0
 epoch = 0
+q2neg = {} # a dict from qid to a list of aid
+question2answer = {} # a dict from qid to the information of both pos and neg answers
+best_dev_map = 0
+best_dev_mrr = 0
+false_samples = {}
+
 start = time.time()
 header = '  Time Epoch Iteration Progress    (%Epoch)  Average_Loss Train_Accuracy Dev/MAP  Dev/MRR'
 dev_log_template = ' '.join(
@@ -190,12 +194,7 @@ def get_batch(question, answer, ext_feat, size):
     return new_batch
 
 
-q2neg = {} # a dict from qid to a list of aid
-question2answer = {} # a dict from qid to the information of both pos and neg answers
-best_dev_correct = 0
 
-
-false_samples = {}
 while True:
     if early_stop:
         print("Early Stopping. Epoch: {}, Best Dev Loss: {}".format(epoch, best_dev_loss))
@@ -257,7 +256,7 @@ while True:
                     near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                 else:
                     debug_qid = qid_i
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="l2", k=args.neg_num)
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=args.neg_num)
 
                 batch_near_list.extend(near_list)
 
@@ -399,11 +398,11 @@ while True:
             # Update validation results
 
 
-            if best_dev_map < dev_map:
+            if best_dev_mrr < dev_mrr:
                 snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
                 torch.save(pw_model, snapshot_path)
                 iters_not_improved = 0
-                best_dev_map = dev_map
+                best_dev_mrr = dev_mrr
             else:
                 iters_not_improved += 1
                 if iters_not_improved >= args.patience:
@@ -413,7 +412,6 @@ while True:
         if iterations % args.log_every == 1 and epoch != 1:
 
             # print progress message
-            n_dev_total = 1 if n_dev_total == 0 else n_dev_total
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter),
