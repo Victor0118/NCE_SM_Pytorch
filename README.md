@@ -1,4 +1,4 @@
-## SM model
+## NCE-SM model
 
 #### References:
 1. Aliaksei _S_everyn and Alessandro _M_oschitti. 2015. Learning to Rank Short Text Pairs with Convolutional Deep Neural 
@@ -62,15 +62,33 @@ python main.py --trained_model saves/TREC/multichannel_best_model.pt
 ### Evaluation
 
 The performance on TrecQA dataset:
-  
-### Best dev 
 
-Metric |rand  |static|non-static|multichannel
--------|------|------|----------|------------
-MAP    |0.8096|0.8162|0.8387    | 0.8274     
-MRR    |0.8560|0.8918|0.9058    | 0.8818
- 
-### Test
+### Without NCE
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.7441 |0.7524|0.7688    |0.7641
+MRR    |0.8172 |0.8012|0.8144    |0.8174
+
+### Pairwise + Max Neg Sample
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.7441 |0.7524|0.7716    |0.7794
+MRR    |0.8172 |0.8012|0.8347    |0.8467
+
+The performance on WikiQA dataset:
+
+
+### Without NCE
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.7441 |0.7524|0.7688    |0.7641
+MRR    |0.8172 |0.8012|0.8144    |0.8174
+
+
+### Pairwise + Max Neg Sample
 
 Metric |rand   |static|non-static|multichannel
 -------|-------|------|----------|------------

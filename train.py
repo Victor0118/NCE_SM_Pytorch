@@ -8,16 +8,13 @@ import torch.nn as nn
 from torchtext import data
 
 from args import get_args
-from model import SmPlusPlus, PairwiseLossCriterion, PairwiseConv
+from model import SmPlusPlus, PairwiseConv
 from trec_dataset import TrecDataset
-from sklearn.preprocessing import normalize
 import operator
 import heapq
-from torch.autograd import Variable
 from torch.nn import functional as F
 
 from evaluate import evaluate
-import sys
 
 args = get_args()
 config = args
@@ -75,8 +72,6 @@ QID.build_vocab(train, dev, test)
 AID.build_vocab(train, dev, test)
 QUESTION.build_vocab(train, dev, test)
 ANSWER.build_vocab(train, dev, test)
-# POS.build_vocab(train, dev, test)
-# NEG.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 QUESTION = set_vectors(QUESTION, args.vector_cache)
@@ -88,8 +83,6 @@ dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train
                          sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
                           sort=False, shuffle=False)
-
-dev_iter, test_iter = test_iter, dev_iter
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
@@ -128,8 +121,9 @@ parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
 # A good lr is required to use Adam
 # optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-8)
-criterion = nn.CrossEntropyLoss()
-pairwiseLoss = PairwiseLossCriterion()
+
+
+# criterion = nn.CrossEntropyLoss()
 marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = False)
 
 early_stop = False
@@ -324,16 +318,7 @@ while True:
                                       true_batch_size)
 
                 optimizer.zero_grad()
-                # near_answer = near_answer[near_answer != 1] # remove padding 1 <pad>
-                # print(new_pos.answer.size()) # [1, 17]
-                # print(new_pos.batch_size)
-                # print(new_pos.question.size())  # [1, 50]
-                # print(new_pos.ext_feat.size())  # [1, 4]
                 output = pw_model([pos_batch, neg_batch])
-                cmp = output[:, 0] > output[:, 1]
-                acc += sum(cmp.data.cpu().numpy())
-                tot += true_batch_size
-                total_sample_per_batch += true_batch_size
 
                 '''
                 debug code
@@ -352,8 +337,11 @@ while True:
                         false_samples[pair] += 1
                     else:
                         false_samples[pair] = 1
-                # print("output:",output.data.numpy()[0][0], output.data.numpy()[1][0])
-                # loss = pairwiseLoss(output)
+
+                cmp = output[:, 0] > output[:, 1]
+                acc += sum(cmp.data.cpu().numpy())
+                tot += true_batch_size
+                total_sample_per_batch += true_batch_size
 
 
                 loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
@@ -392,54 +380,14 @@ while True:
                 # dev singlely or in a batch? -> in a batch
                 but dev singlely is equal to dev_size = 1
                 '''
-                # for i in range(batch.batch_size):
-                #     score = pw_model.convModel(dev_batch[i])
-                #     score = pw_model.linearLayer(score)
-                #     label_i = batch.label[i].cpu().data.numpy()[0]
-                #     if label_i == 1:
-                #         new_pos =
-                #
-                # new_neg = score
-
-                # output = pw_model([new_neg, new_pos])
-                # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
-
-                # qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 scores = pw_model.convModel(dev_batch)
-                # scores = pw_model.dropout(scores) # no drop out in the dev/test step
                 scores = pw_model.linearLayer(scores)
-                # print(dev_batch.label)
-                # print(output.data.numpy()[0], "label: ",dev_batch.label.data.numpy()[0])
-                # output = scores.clone()
-                # output[scores>0] = 2
-                # output[scores<=0] = 1
-                # output = Variable(output.data.long())
-                # print(output.size)
-                # print(dev_batch.label.size())
-                # print(dev_batch.label)
-                # n_dev_correct += (output.view(dev_batch.label.size()).data == dev_batch.label.data).sum()
-                # n_dev_total += dev_batch.batch_size
-                # dev_loss_num += loss.data[0]
-                # true_label_array = index2lab
-                # el[np.transpose(dev_batch.label.cpu().data.numpy())]
-                # scores = model(dev_batch)
-                # n_dev_correct += (torch.max(scores, 1)[1].view(dev_batch.label.size()).data == dev_batch.label.data).sum()
-                # dev_loss = criterion(scores, dev_batch.label)
-                # dev_losses.append(dev_loss.data[0])
-                # index_label = np.transpose(torch.max(scores, 1)[1].view(dev_batch.label.size()).cpu().data.numpy())
-                # label_array = index2label[index_label]
-                # get the relevance scores
-                # score_array = scores[:, 2].cpu().data.numpy()
-                # for i in range(dev_batch.batch_size):
-                #     this_qid, predicted_label, score, gold_label = qid_array[i], label_array[i], score_array[i], true_label_array[i]
-                #     instance.append((this_qid, predicted_label, score, gold_label))
                 qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 score_array = scores.cpu().data.numpy().reshape(-1)
                 true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
                 for i in range(dev_batch.batch_size):
                     this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
                     instance.append((this_qid, score, gold_label))
-            # dev_map, dev_mrr = evaluate(instance, 'valid', config.mode)
 
             test_mode = "dev"
             dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
@@ -448,13 +396,12 @@ while True:
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
                                           100. * (1 + batch_idx) / len(train_iter),
                                           loss_num / total_sample_per_batch, acc / tot, dev_map, dev_mrr))
-            # , acc / tot
             # Update validation results
-            # print(best_dev_correct/n_dev_total)
-            snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
-            torch.save(pw_model, snapshot_path)
+
 
             if best_dev_map < dev_map:
+                snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
+                torch.save(pw_model, snapshot_path)
                 iters_not_improved = 0
                 best_dev_map = dev_map
             else:
@@ -471,14 +418,5 @@ while True:
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter),
                                      loss_num/total_sample_per_batch,  acc / tot))
-            # , acc / tot
             acc = 0
             tot = 0
-            # print(log_template.format(time.time() - start,
-            #                           epoch, iterations, 1 + batch_idx, len(train_iter),
-            #                           100. * (1 + batch_idx) / len(train_iter), loss_num, ' ' * 8,
-            #                           dev_loss_num, ' ' * 12))
-            # print(log_template.format(time.time() - start,
-            #                           epoch, iterations, 1 + batch_idx, len(train_iter),
-            #                           100. * (1 + batch_idx) / len(train_iter), loss.data[0], ' ' * 8,
-            #                           n_correct / n_total * 100, ' ' * 12))
