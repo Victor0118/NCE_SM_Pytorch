@@ -39,9 +39,6 @@ AID = data.Field(sequential=False)
 QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
-# EXTERNAL = data.Field(sequential=False, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-#                       preprocessing=data.Pipeline(lambda x: x.split()),
-#                       postprocessing=data.Pipeline(lambda x, train: [float(y) for y in x]))
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
             postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 if config.dataset == 'TREC':

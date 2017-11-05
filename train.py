@@ -19,7 +19,7 @@ from evaluate import evaluate
 args = get_args()
 config = args
 torch.manual_seed(args.seed)
-
+torch.backends.cudnn.deterministic = True
 
 def set_vectors(field, vector_path):
     if os.path.isfile(vector_path):
@@ -58,9 +58,6 @@ AID = data.Field(sequential=False)
 QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
-# EXTERNAL = data.Field(sequential=False, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-#                       preprocessing=data.Pipeline(lambda x: x.split()),
-#                       postprocessing=data.Pipeline(lambda x, train: [float(y) for y in x]))
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
             postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 
@@ -250,7 +247,7 @@ while True:
                     near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                 else:
                     debug_qid = qid_i
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=args.neg_num)
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="l2", k=args.neg_num)
 
                 batch_near_list.extend(near_list)
 
