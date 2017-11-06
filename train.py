@@ -14,7 +14,10 @@ import operator
 import heapq
 from torch.nn import functional as F
 
-from evaluate import evaluate
+from utils.relevancy_metrics import get_map_mrr
+
+from datasets.trecqa import TRECQA
+
 
 args = get_args()
 config = args
@@ -53,24 +56,22 @@ if torch.cuda.is_available() and not args.cuda:
 np.random.seed(args.seed)
 random.seed(args.seed)
 
-QID = data.Field(sequential=False)
-AID = data.Field(sequential=False)
-QUESTION = data.Field(batch_first=True)
-ANSWER = data.Field(batch_first=True)
-LABEL = data.Field(sequential=False)
+QID = data.Field(sequential=False, use_vocab=False)
+AID = data.Field(sequential=False, use_vocab=False)
+TEXT = data.Field(batch_first=True)
+LABEL = data.Field(sequential=False, use_vocab=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
             postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 
-train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+train, dev, test = TrecDataset.splits(QID, TEXT, AID, TEXT, EXTERNAL, LABEL)
 
-QID.build_vocab(train, dev, test)
-AID.build_vocab(train, dev, test)
-QUESTION.build_vocab(train, dev, test)
-ANSWER.build_vocab(train, dev, test)
-LABEL.build_vocab(train, dev, test)
+TEXT.build_vocab(train, dev, test)
+# LABEL.build_vocab(train, dev, test)
 
-QUESTION = set_vectors(QUESTION, args.vector_cache)
-ANSWER = set_vectors(ANSWER, args.vector_cache)
+TEXT = set_vectors(TEXT, args.vector_cache)
+
+# train_loader, dev_loader, test_loader = TRECQA.iters(dataset_root, word_vectors_file, word_vectors_dir, batch_size, device=device, unk_init=UnknownWordVecCache.unk)
+
 
 train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
                            sort=False, shuffle=True)
@@ -79,14 +80,14 @@ dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
                           sort=False, shuffle=False)
 
-config.target_class = len(LABEL.vocab)
-config.questions_num = len(QUESTION.vocab)
-config.answers_num = len(ANSWER.vocab)
+# config.target_class = len(LABEL.vocab)
+config.target_class = 2
+config.questions_num = len(TEXT.vocab)
+config.answers_num = len(TEXT.vocab)
 
 print("Dataset {}    Mode {}".format(args.dataset, args.mode))
-print("VOCAB num", len(QUESTION.vocab))
-print("LABEL.target_class:", len(LABEL.vocab))
-print("LABELS:", LABEL.vocab.itos)
+print("VOCAB num", len(TEXT.vocab))
+print("LABEL.target_class:", config.target_class)
 print("Train instance", len(train))
 print("Dev instance", len(dev))
 print("Test instance", len(test))
@@ -98,10 +99,10 @@ if args.resume_snapshot:
         pw_model = torch.load(args.resume_snapshot, map_location=lambda storage, location: storage)
 else:
     model = SmPlusPlus(config)
-    model.static_question_embed.weight.data.copy_(QUESTION.vocab.vectors)
-    model.nonstatic_question_embed.weight.data.copy_(QUESTION.vocab.vectors)
-    model.static_answer_embed.weight.data.copy_(ANSWER.vocab.vectors)
-    model.nonstatic_answer_embed.weight.data.copy_(ANSWER.vocab.vectors)
+    model.static_question_embed.weight.data.copy_(TEXT.vocab.vectors)
+    model.nonstatic_question_embed.weight.data.copy_(TEXT.vocab.vectors)
+    model.static_answer_embed.weight.data.copy_(TEXT.vocab.vectors)
+    model.nonstatic_answer_embed.weight.data.copy_(TEXT.vocab.vectors)
 
     if args.cuda:
         model.cuda()
@@ -139,12 +140,10 @@ os.makedirs(args.save_path, exist_ok=True)
 os.makedirs(os.path.join(args.save_path, args.dataset), exist_ok=True)
 print(header)
 
-index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
-index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
-index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
-index2question = np.array(QUESTION.vocab.itos)  # torchtext index to words appearing in questions in the TrecQA dataset
-index2answer = np.array(ANSWER.vocab.itos) # torchtext index to words appearing in answers in the TrecQA dataset
-
+# index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
+# index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
+# index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
+index2text = np.array(TEXT.vocab.itos)
 
 # get the nearest negative samples to the positive sample by computing the feature difference
 def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
@@ -227,11 +226,7 @@ while True:
 
             if qid_i not in question2answer:
                 question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
-            '''
-            # in the dataset, "1" is positive, "0" is negative
-            # in the code (after indexed by torchtext), 2 is positive and 1 is negative  
-            '''
-            if label_i == 2:
+            if label_i == 1:
 
                 if aid_i not in question2answer[qid_i]["pos"]:
                     question2answer[qid_i]["pos"][aid_i] = {}
@@ -273,7 +268,7 @@ while True:
                         new_train_neg["question"].append(question_i)
                         new_train_neg["ext_feat"].append(ext_feat_neg)
 
-            elif label_i == 1:
+            elif label_i == 0:
 
                 if aid_i not in question2answer[qid_i]["neg"]:
                     answer_i = answer_i[answer_i != 1]
@@ -322,7 +317,7 @@ while True:
                 alist = batch_aid[cmp]
                 nlist = batch_near_list[cmp]
                 for k in range(len(batch_qid[cmp])):
-                    pair = (index2qid[qlist[k]], index2aid[alist[k]], index2aid[nlist[k]])
+                    pair = (qlist[k], alist[k], nlist[k])
                     if pair in false_samples:
                         false_samples[pair] += 1
                     else:
@@ -346,7 +341,9 @@ while True:
             n_dev_correct = 0
             n_dev_total = 0
             dev_losses = []
-            instance = []
+            qids = []
+            predictions = []
+            labels = []
 
             '''
             debug code
@@ -360,7 +357,7 @@ while True:
                     print(false_samples_sorted[k][0], false_samples_sorted[k][1], end=" ")
                 print()
                 # if epoch >= 3:
-                #     print("qid:", index2qid[debug_qid], " near_list:", [index2aid[x] for x in near_list])
+                #     print("qid:", debug_qid, " near_list:", [x for x in near_list])
 
             # print("============output:============")
             for dev_batch_idx, dev_batch in enumerate(dev_iter):
@@ -370,16 +367,15 @@ while True:
                 '''
                 scores = pw_model.convModel(dev_batch)
                 scores = pw_model.linearLayer(scores)
-                qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
+                qid_array = np.transpose(dev_batch.qid.cpu().data.numpy())
                 score_array = scores.cpu().data.numpy().reshape(-1)
-                true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
-                for i in range(dev_batch.batch_size):
-                    this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
-                    instance.append((this_qid, score, gold_label))
+                true_label_array = np.transpose(dev_batch.label.cpu().data.numpy())
 
-            test_mode = "dev"
-            dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
+                qids.extend(qid_array.tolist())
+                predictions.extend(score_array.tolist())
+                labels.extend(true_label_array.tolist())
 
+            dev_map, dev_mrr = get_map_mrr(qids, predictions, labels)
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
                                           100. * (1 + batch_idx) / len(train_iter),
