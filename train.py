@@ -245,7 +245,7 @@ def train_sm():
                     if epoch == 1:
                         continue
                     # random generate sample in the first training epoch
-                    elif epoch == 2:
+                    elif epoch == 2 or args.neg_sample == "random":
                         near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                     else:
                         debug_qid = qid_i
@@ -363,7 +363,7 @@ def train_sm():
                     false_samples_sorted = sorted(false_samples.items(), key=lambda t: t[1], reverse=True)
                     for k in range(min(4,len(false_samples))):
                         print(false_samples_sorted[k][0], false_samples_sorted[k][1], end=" ")
-                    print() 
+                    print()
 
                     # new_train_pos = {"answer": [], "question": [], "ext_feat": []}
                     # new_train_neg = {"answer": [], "question": [], "ext_feat": []}
