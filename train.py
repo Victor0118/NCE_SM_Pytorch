@@ -79,6 +79,8 @@ dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
                           sort=False, shuffle=False)
 
+dev_iter, test_iter = test_iter, dev_iter
+
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
 config.answers_num = len(ANSWER.vocab)
@@ -243,7 +245,7 @@ while True:
                 if epoch == 1:
                     continue
                 # random generate sample in the first training epoch
-                elif epoch == 2:
+                elif epoch == 2 or args.neg_sample == "random":
                     near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                 else:
                     debug_qid = qid_i
@@ -264,10 +266,13 @@ while True:
                         new_train_pos["ext_feat"].append(ext_feat_i)
 
                         near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
-                        if near_answer.size()[0] > max_len_q:
+                        if question_i.size()[0] > max_len_q:
                             max_len_q = question_i.size()[0]
                         if near_answer.size()[0] > max_len_a:
                             max_len_a = near_answer.size()[0]
+                        if answer_i.size()[0] > max_len_a:
+                            max_len_a = answer_i.size()[0]
+
                         ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
                         new_train_neg["answer"].append(near_answer)
                         new_train_neg["question"].append(question_i)

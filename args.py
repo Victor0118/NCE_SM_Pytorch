@@ -25,6 +25,7 @@ def get_args():
     parser.add_argument('--weight_decay',type=float, default=1e-5)
     parser.add_argument('--ext_feats_size', type=int, default=4)
     parser.add_argument('--neg_num', type=int, default=5)
+    parser.add_argument('--neg_sample', type=str, default="random")
 
     args = parser.parse_args()
     return args
