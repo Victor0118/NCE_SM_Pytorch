@@ -54,51 +54,21 @@ def train_sm():
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    # QID = data.Field(sequential=False, use_vocab=False)
-    # AID = data.Field(sequential=False, use_vocab=False)
-    # TEXT = data.Field(batch_first=True)
-    # LABEL = data.Field(sequential=False, use_vocab=False)
-    # EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-    #             postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
-    #
-    # train, dev, test = TrecDataset.splits(QID, TEXT, AID, TEXT, EXTERNAL, LABEL)
-
-    # TEXT.build_vocab(train, dev, test)
-    # LABEL.build_vocab(train, dev, test)
-
-    # TEXT = set_vectors(TEXT, args.vector_cache)
-
-
-    # , os.pardir
     dataset_root = os.path.join(os.pardir, 'data', 'TrecQA/')
     train_iter, dev_iter, test_iter = TRECQA.iters(dataset_root, args.vector_cache, args.wordvec_dir, batch_size=args.batch_size,
                                                    pt_file=True, device=args.gpu, unk_init=UnknownWordVecCache.unk) #
 
-    # index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
-    # index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
-    # index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
     index2text = np.array(TRECQA.TEXT_FIELD.vocab.itos)
-    dev_iter = test_iter
 
-    print("index2text:", index2text)
-    # train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-    #                            sort=False, shuffle=True)
-    # dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-    #                          sort=False,    shuffle=False)
-    # test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-    #                           sort=False, shuffle=False)
 
-    # config.target_class = len(LABEL.vocab)
     config.target_class = 2
     config.questions_num = TRECQA.VOCAB_NUM
     config.answers_num = TRECQA.VOCAB_NUM
 
+    print("index2text:", index2text)
     print("Dataset {}    Mode {}".format(args.dataset, args.mode))
     print("VOCAB num", TRECQA.VOCAB_NUM)
     print("LABEL.target_class:", config.target_class)
-    # print("Train instance", len(train))
-    # print("Dev instance", len(dev))
-    # print("Test instance", len(test))
 
     if args.resume_snapshot:
         if args.cuda:

@@ -38,36 +38,12 @@ if torch.cuda.is_available() and not args.cuda:
 np.random.seed(args.seed)
 random.seed(args.seed)
 
-# QID = data.Fielfrom datasets.trecqa import TRECQA
-# d(sequential=False)
-# AID = data.Field(sequential=False)
-# QUESTION = data.Field(batch_first=True)
-# ANSWER = data.Field(batch_first=True)
-# LABEL = data.Field(sequential=False)
-# EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-#             postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
-# if config.dataset == 'TREC':
-#     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
-# else:
-#     print("Unsupported dataset")
-#     exit()
-
-# QID.build_vocab(train, dev, test)
-# AID.build_vocab(train, dev, test)
-# QUESTION.build_vocab(train, dev, test)
-# ANSWER.build_vocab(train, dev, test)
-# LABEL.build_vocab(train, dev, test)
-#
-# train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-#                                    sort=False, shuffle=True)
-# dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-#                                    sort=False, shuffle=False)
-# test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-#                                    sort=False, shuffle=False)
-
-dataset_root = os.path.join(os.pardir, 'data', 'TrecQA/')
-train_iter, dev_iter, test_iter = TRECQA.iters(dataset_root, args.vector_cache, args.wordvec_dir, batch_size=args.batch_size, pt_file=True, device=args.gpu, unk_init=UnknownWordVecCache.unk)
-
+if config.dataset == 'TREC':
+    dataset_root = os.path.join(os.pardir, 'data', 'TrecQA/')
+    train_iter, dev_iter, test_iter = TRECQA.iters(dataset_root, args.vector_cache, args.wordvec_dir, batch_size=args.batch_size, pt_file=True, device=args.gpu, unk_init=UnknownWordVecCache.unk)
+else:
+    print("Unsupported dataset")
+    exit()
 
 config.target_class = 2
 config.questions_num = len(TRECQA.TEXT_FIELD.vocab)
