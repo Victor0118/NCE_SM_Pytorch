@@ -71,8 +71,16 @@ def train_sm():
 
     # , os.pardir
     dataset_root = os.path.join(os.pardir, 'data', 'TrecQA/')
-    train_iter, dev_iter, test_iter = TRECQA.iters(dataset_root, args.vector_cache, args.wordvec_dir, batch_size=args.batch_size, pt_file=True, device=args.gpu, unk_init=UnknownWordVecCache.unk)
+    train_iter, dev_iter, test_iter = TRECQA.iters(dataset_root, args.vector_cache, args.wordvec_dir, batch_size=args.batch_size,
+                                                   pt_file=True, device=args.gpu, unk_init=UnknownWordVecCache.unk) #
 
+    # index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
+    # index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
+    # index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
+    index2text = np.array(TRECQA.TEXT_FIELD.vocab.itos)
+    dev_iter = test_iter
+
+    print("index2text:", index2text)
     # train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
     #                            sort=False, shuffle=True)
     # dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
@@ -113,10 +121,11 @@ def train_sm():
     parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 
     # the SM model originally follows SGD but Adadelta is used here
-    optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
+    optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=args.eps)
     # A good lr is required to use Adam
     # optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-8)
-
+    # optimizer = torch.optim.SGD(parameter, lr=0.001, momentum=0.9, weight_decay=args.weight_decay)
+    # optimizer = torch.optim.RMSprop(parameter, lr=0.0001, weight_decay=args.weight_decay)
 
     marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = True)
 
@@ -139,10 +148,7 @@ def train_sm():
     os.makedirs(os.path.join(args.save_path, args.dataset), exist_ok=True)
     print(header)
 
-    # index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
-    # index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
-    # index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
-    index2text = np.array(TRECQA.TEXT_FIELD.vocab.itos)
+
 
     # get the nearest negative samples to the positive sample by computing the feature difference
     def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
@@ -159,7 +165,6 @@ def train_sm():
                 dis = 1 - feat_norm.dot(pos_feature_norm)
             dis_list.append(dis)
             neg_list.append(key)
-            # index2dis[key] = dis
 
         k = min(k, len(neg_dict))
         min_list = heapq.nsmallest(k, enumerate(dis_list), key=operator.itemgetter(1))
@@ -213,9 +218,12 @@ def train_sm():
             batch_near_list = []
             batch_qid = []
             batch_aid = []
+            # print(index2text[batch.sentence_1.cpu().data.numpy()])
+
             for i in range(batch.batch_size):
                 label_i = batch.label[i].cpu().data.numpy()[0]
                 question_i = batch.sentence_1[i]
+
                 # question_i = question_i[question_i!=1] # remove padding 1 <pad>
                 answer_i = batch.sentence_2[i]
                 # answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
@@ -241,7 +249,7 @@ def train_sm():
                         near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                     else:
                         debug_qid = qid_i
-                        near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="l2", k=args.neg_num)
+                        near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine", k=args.neg_num)
 
                     batch_near_list.extend(near_list)
 
@@ -258,10 +266,13 @@ def train_sm():
                             new_train_pos["ext_feat"].append(ext_feat_i)
 
                             near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
-                            if near_answer.size()[0] > max_len_q:
+                            if question_i.size()[0] > max_len_q:
                                 max_len_q = question_i.size()[0]
                             if near_answer.size()[0] > max_len_a:
                                 max_len_a = near_answer.size()[0]
+                            if answer_i.size()[0] > max_len_a:
+                                max_len_a = answer_i.size()[0]
+
                             ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
                             new_train_neg["answer"].append(near_answer)
                             new_train_neg["question"].append(question_i)
@@ -348,11 +359,60 @@ def train_sm():
                 debug code
                 '''
                 if 'false_samples' in locals():
-                    print("false_samples:", end='    ')
+                    print("false_samples:", len(false_samples), end=' ')
                     false_samples_sorted = sorted(false_samples.items(), key=lambda t: t[1], reverse=True)
                     for k in range(min(4,len(false_samples))):
                         print(false_samples_sorted[k][0], false_samples_sorted[k][1], end=" ")
-                    print()
+                    print() 
+
+                    # new_train_pos = {"answer": [], "question": [], "ext_feat": []}
+                    # new_train_neg = {"answer": [], "question": [], "ext_feat": []}
+                    # max_len_a = 0
+                    # max_len_q = 0
+                    # for s in false_samples:
+                    #     qid = s[0]
+                    #     aid = s[1]
+                    #     nid = s[2]
+                    #     q = question2answer[qid]["question"]
+                    #     pa = question2answer[qid]["pos"][aid]["answer"]
+                    #     na = question2answer[qid]["neg"][nid]["answer"]
+                    #     if q.size()[0] > max_len_q:
+                    #         max_len_q = q.size()[0]
+                    #     if pa.size()[0] > max_len_a:
+                    #         max_len_a = pa.size()[0]
+                    #     if na.size()[0] > max_len_a:
+                    #         max_len_a = na.size()[0]
+                    #
+                    #     new_train_pos["answer"].append(pa)
+                    #     new_train_pos["question"].append(q)
+                    #     new_train_pos["ext_feat"].append(question2answer[qid]["pos"][aid]["ext_feat"])
+                    #     new_train_neg["answer"].append(na)
+                    #     new_train_neg["question"].append(q)
+                    #     new_train_neg["ext_feat"].append(question2answer[qid]["neg"][nid]["ext_feat"])
+                    #
+                    # for j in range(len(false_samples)):
+                    #     new_train_neg["answer"][j] = F.pad(new_train_neg["answer"][j],
+                    #                                        (0, max_len_a - new_train_neg["answer"][j].size()[0]), value=1)
+                    #     new_train_pos["answer"][j] = F.pad(new_train_pos["answer"][j],
+                    #                                        (0, max_len_a - new_train_pos["answer"][j].size()[0]), value=1)
+                    #     new_train_pos["question"][j] = F.pad(new_train_pos["question"][j],
+                    #                                        (0, max_len_q - new_train_pos["question"][j].size()[0]), value=1)
+                    #     new_train_neg["question"][j] = F.pad(new_train_neg["question"][j],
+                    #                                        (0, max_len_q - new_train_neg["question"][j].size()[0]), value=1)
+                    #
+                    # pos_batch = get_batch(new_train_pos["question"], new_train_pos["answer"], new_train_pos["ext_feat"],
+                    #                       true_batch_size)
+                    # neg_batch = get_batch(new_train_neg["question"], new_train_neg["answer"], new_train_neg["ext_feat"],
+                    #                       true_batch_size)
+                    #
+                    # optimizer.zero_grad()
+                    # output = pw_model([pos_batch, neg_batch])
+                    # loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
+                    # loss.backward()
+                    # optimizer.step()
+                    # false_samples = {}
+
+
                     # if epoch >= 3:
                     #     print("qid:", debug_qid, " near_list:", [x for x in near_list])
 
