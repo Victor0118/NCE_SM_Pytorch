@@ -72,7 +72,7 @@ def predict(test_mode, dataset_iter):
 
     dev_map, dev_mrr = get_map_mrr(qids, predictions, labels)
 
-    logger.info(dev_map, dev_mrr)
+    logger.info("{} {}".format(dev_map, dev_mrr))
 
 # Run the model on the dev set
 predict('dev', dataset_iter=dev_iter)
