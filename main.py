@@ -54,11 +54,11 @@ ANSWER.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-                           sort=False, shuffle=True)
+                           sort_key=lambda x: len(x.question), sort=False, shuffle=True)
 dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                         sort=False, shuffle=False)
+                         sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                          sort=False, shuffle=False)
+                          sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)

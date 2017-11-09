@@ -63,6 +63,8 @@ EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_firs
 
 train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 
+
+
 QID.build_vocab(train, dev, test)
 AID.build_vocab(train, dev, test)
 QUESTION.build_vocab(train, dev, test)
@@ -72,14 +74,14 @@ LABEL.build_vocab(train, dev, test)
 QUESTION = set_vectors(QUESTION, args.vector_cache)
 ANSWER = set_vectors(ANSWER, args.vector_cache)
 
-train_iter = data.BucketIterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
                                  sort_key=lambda x: len(x.question), sort=False, shuffle=True)
-dev_iter = data.BucketIterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                         sort=False, shuffle=False)
-test_iter = data.BucketIterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                          sort=False, shuffle=False)
-
+dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+                               sort_key=lambda x: len(x.question), sort=False, shuffle=False)
+test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+                                sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 dev_iter, test_iter = test_iter, dev_iter
+
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
