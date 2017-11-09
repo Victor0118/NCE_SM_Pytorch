@@ -40,7 +40,7 @@ QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-            postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
+                      postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 if config.dataset == 'TREC':
     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 else:
@@ -54,11 +54,11 @@ ANSWER.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-                                   sort=False, shuffle=True)
+                           sort=False, shuffle=True)
 dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                         sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                          sort=False, shuffle=False)
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
@@ -68,10 +68,11 @@ print("Label dict:", LABEL.vocab.itos)
 if args.cuda:
     model = torch.load(args.trained_model, map_location=lambda storage, location: storage.cuda(args.gpu))
 else:
-    model = torch.load(args.trained_model, map_location=lambda storage,location: storage)
+    model = torch.load(args.trained_model, map_location=lambda storage, location: storage)
 
 index2label = np.array(LABEL.vocab.itos)
 index2qid = np.array(QID.vocab.itos)
+
 
 def predict(test_mode, dataset_iter):
     model.eval()
@@ -93,6 +94,7 @@ def predict(test_mode, dataset_iter):
 
     dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
     print(dev_map, dev_mrr)
+
 
 # Run the model on the dev set
 predict('dev', dataset_iter=dev_iter)

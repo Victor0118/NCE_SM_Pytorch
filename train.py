@@ -2,24 +2,24 @@ import time
 import os
 import numpy as np
 import random
+import operator
+import heapq
 
 import torch
 import torch.nn as nn
 from torchtext import data
+from torch.nn import functional as F
 
 from args import get_args
 from model import SmPlusPlus, PairwiseConv
 from trec_dataset import TrecDataset
-import operator
-import heapq
-from torch.nn import functional as F
-
 from evaluate import evaluate
 
 args = get_args()
 config = args
 torch.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
+
 
 def set_vectors(field, vector_path):
     if os.path.isfile(vector_path):
@@ -59,7 +59,7 @@ QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-            postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
+                      postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 
 train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 
@@ -72,11 +72,11 @@ LABEL.build_vocab(train, dev, test)
 QUESTION = set_vectors(QUESTION, args.vector_cache)
 ANSWER = set_vectors(ANSWER, args.vector_cache)
 
-train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-                           sort=False, shuffle=True)
-dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                         sort=False,    shuffle=False)
-test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+train_iter = data.BucketIterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
+                                 sort_key=lambda x: len(x.question), sort=False, shuffle=True)
+dev_iter = data.BucketIterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
+                         sort=False, shuffle=False)
+test_iter = data.BucketIterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
                           sort=False, shuffle=False)
 
 dev_iter, test_iter = test_iter, dev_iter
@@ -109,7 +109,6 @@ else:
         model.cuda()
         print("Shift model to GPU")
 
-
     pw_model = PairwiseConv(model)
 
 parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
@@ -119,15 +118,14 @@ optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight
 # A good lr is required to use Adam
 # optimizer = torch.optim.Adam(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-8)
 
-
-marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = True)
+marginRankingLoss = nn.MarginRankingLoss(margin=1, size_average=True)
 
 early_stop = False
 iterations = 0
 iters_not_improved = 0
 epoch = 0
-q2neg = {} # a dict from qid to a list of aid
-question2answer = {} # a dict from qid to the information of both pos and neg answers
+q2neg = {}  # a dict from qid to a list of aid
+question2answer = {}  # a dict from qid to the information of both pos and neg answers
 best_dev_map = 0
 best_dev_mrr = 0
 false_samples = {}
@@ -141,11 +139,11 @@ os.makedirs(args.save_path, exist_ok=True)
 os.makedirs(os.path.join(args.save_path, args.dataset), exist_ok=True)
 print(header)
 
-index2label = np.array(LABEL.vocab.itos) # ['<unk>', '0', '1']
-index2qid = np.array(QID.vocab.itos) # torchtext index to qid in the TrecQA dataset
-index2aid = np.array(AID.vocab.itos) # torchtext index to aid in the TrecQA dataset
+index2label = np.array(LABEL.vocab.itos)  # ['<unk>', '0', '1']
+index2qid = np.array(QID.vocab.itos)  # torchtext index to qid in the TrecQA dataset
+index2aid = np.array(AID.vocab.itos)  # torchtext index to aid in the TrecQA dataset
 index2question = np.array(QUESTION.vocab.itos)  # torchtext index to words appearing in questions in the TrecQA dataset
-index2answer = np.array(ANSWER.vocab.itos) # torchtext index to words appearing in answers in the TrecQA dataset
+index2answer = np.array(ANSWER.vocab.itos)  # torchtext index to words appearing in answers in the TrecQA dataset
 
 
 # get the nearest negative samples to the positive sample by computing the feature difference
@@ -170,6 +168,7 @@ def get_nearest_neg_id(pos_feature, neg_dict, distance="cosine", k=1):
     min_id_list = [neg_list[x[0]] for x in min_list]
     return min_id_list
 
+
 # get the negative samples randomly
 def get_random_neg_id(q2neg, qid_i, k=5):
     # question 1734 has no neg answer
@@ -178,6 +177,7 @@ def get_random_neg_id(q2neg, qid_i, k=5):
     k = min(k, len(q2neg[qid_i]))
     ran = random.sample(q2neg[qid_i], k)
     return ran
+
 
 # pack the lists of question/answer/ext_feat into a torchtext batch
 def get_batch(question, answer, ext_feat, size):
@@ -188,6 +188,7 @@ def get_batch(question, answer, ext_feat, size):
     setattr(new_batch, "question", torch.stack(question))
     setattr(new_batch, "ext_feat", torch.stack(ext_feat))
     return new_batch
+
 
 while True:
     if early_stop:
@@ -249,14 +250,15 @@ while True:
                     near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
                 else:
                     debug_qid = qid_i
-                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="l2", k=args.neg_num)
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="l2",
+                                                   k=args.neg_num)
 
                 batch_near_list.extend(near_list)
 
                 neg_size = len(near_list)
                 if neg_size != 0:
-                    answer_i = answer_i[answer_i != 1] # remove padding 1 <pad>
-                    question_i = question_i[question_i != 1] # remove padding 1 <pad>
+                    answer_i = answer_i[answer_i != 1]  # remove padding 1 <pad>
+                    question_i = question_i[question_i != 1]  # remove padding 1 <pad>
                     for near_id in near_list:
                         batch_qid.append(qid_i)
                         batch_aid.append(aid_i)
@@ -303,9 +305,11 @@ while True:
                     new_train_pos["answer"][j] = F.pad(new_train_pos["answer"][j],
                                                        (0, max_len_a - new_train_pos["answer"][j].size()[0]), value=1)
                     new_train_pos["question"][j] = F.pad(new_train_pos["question"][j],
-                                                       (0, max_len_q - new_train_pos["question"][j].size()[0]), value=1)
+                                                         (0, max_len_q - new_train_pos["question"][j].size()[0]),
+                                                         value=1)
                     new_train_neg["question"][j] = F.pad(new_train_neg["question"][j],
-                                                       (0, max_len_q - new_train_neg["question"][j].size()[0]), value=1)
+                                                         (0, max_len_q - new_train_neg["question"][j].size()[0]),
+                                                         value=1)
 
                 pos_batch = get_batch(new_train_pos["question"], new_train_pos["answer"], new_train_pos["ext_feat"],
                                       true_batch_size)
@@ -337,7 +341,6 @@ while True:
                 acc += sum(cmp.data.cpu().numpy())
                 tot += true_batch_size
 
-
                 loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
                 loss_num = loss.data.numpy()[0]
                 loss.backward()
@@ -359,9 +362,9 @@ while True:
             if 'false_samples' in locals():
                 # output = pw_model([new_neg, new_pos])
                 # print(output[0].data.numpy()[0], output[1].data.numpy()[0])
-                print("false_samples:",end='    ')
-                false_samples_sorted = sorted(false_samples.items(), key=lambda t: t[1], reverse = True)
-                for k in range(min(4,len(false_samples))):
+                print("false_samples:", end='    ')
+                false_samples_sorted = sorted(false_samples.items(), key=lambda t: t[1], reverse=True)
+                for k in range(min(4, len(false_samples))):
                     print(false_samples_sorted[k][0], false_samples_sorted[k][1], end=" ")
                 print()
                 # if epoch >= 3:
@@ -405,6 +408,6 @@ while True:
             print(log_template.format(time.time() - start,
                                       epoch, iterations, 1 + batch_idx, len(train_iter),
                                       100. * (1 + batch_idx) / len(train_iter),
-                                     loss_num,  acc / tot))
+                                      loss_num, acc / tot))
             acc = 0
             tot = 0
