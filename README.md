@@ -1,10 +1,11 @@
-## SM model
+## NCE-SM model
 
 #### References:
-1. Aliaksei _S_everyn and Alessandro _M_oschitti. 2015. Learning to Rank Short Text Pairs with Convolutional Deep Neural 
++ Aliaksei _S_everyn and Alessandro _M_oschitti. 2015. Learning to Rank Short Text Pairs with Convolutional Deep Neural
 Networks. In Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information 
 Retrieval (SIGIR '15). ACM, New York, NY, USA, 373-382. DOI: http://dx.doi.org/10.1145/2766462.2767738
 
++ Jinfeng Rao, Hua He, and Jimmy Lin. [Noise-Contrastive Estimation for Answer Selection with Deep Neural Networks.](http://dl.acm.org/citation.cfm?id=2983872) *Proceedings of the 25th ACM International on Conference on Information and Knowledge Management (CIKM 2016)*, pages 1913-1916.
 
 ### Requirements
 ```
@@ -40,10 +41,9 @@ You can train the SM model for the 4 following configurations:
 3. __non-static__ - the word embeddings are tuned during training
 4. __multichannel__ - contains static and non-static channels for question and answer conv layers
 
-To train on GPU 0 with static configuration:
 
 ```bash
-python train.py --mode static --gpu 0
+python train.py --no_cuda --mode rand --batch_size 64 --neg_num 8 --dev_every 50 --patience 1000
 ```
 
 NB: pass `--no_cuda` to use CPU
@@ -56,23 +56,33 @@ saves/static_best_model.pt
 ### Testing the model
 
 ```
-python main.py --trained_model saves/TREC/multichannel_best_model.pt 
+python main.py --trained_model saves/TREC/multichannel_best_model.pt --batch_size 64 --no_cuda
 ```
 
 ### Evaluation
 
-The performance on TrecQA dataset:
-  
-### Best dev 
+#### The performance on TrecQA dataset:
 
-Metric |rand  |static|non-static|multichannel
--------|------|------|----------|------------
-MAP    |0.8096|0.8162|0.8387    | 0.8274     
-MRR    |0.8560|0.8918|0.9058    | 0.8818
- 
-### Test
+##### Without NCE
 
 Metric |rand   |static|non-static|multichannel
 -------|-------|------|----------|------------
 MAP    |0.7441 |0.7524|0.7688    |0.7641
 MRR    |0.8172 |0.8012|0.8144    |0.8174
+
+##### Max Neg Sample
+
+To be added
+
+##### Pairwise + Max Neg Sample with neg_num = 8
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.7427 |0.7546|0.7716    |0.7794
+MRR    |0.8151 |0.8061|0.8347    |0.8467
+
+
+#### The performance on WikiQA dataset:
+
+To be added
+
