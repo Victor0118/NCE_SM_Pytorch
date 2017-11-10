@@ -11,8 +11,6 @@ class PairwiseConv(nn.Module):
     """docstring for PairwiseConv"""
     def __init__(self, model):
         super(PairwiseConv, self).__init__()
-        # self.linearLayer = self:LinearLayer() ??
-        # self.convModel = SmPlusPlus(config)
         self.convModel = model
         self.dropout = nn.Dropout(0.5)
         self.linearLayer = nn.Linear(model.n_hidden, 1)
@@ -107,9 +105,4 @@ class SmPlusPlus(nn.Module):
         x = torch.cat(x, 1)
         x = F.tanh(self.combined_feature_vector(x))
 
-        '''
-        add dropout and hidden layer here? No, it should be in PairwiseConv
-        '''
-        # x = self.dropout(x)
-        # x = self.hidden(x)
         return x

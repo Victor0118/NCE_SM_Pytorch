@@ -33,9 +33,10 @@ def set_vectors(field, vector_path):
                 field.vocab.vectors[i] = vectors[wv_index]
             else:
                 # initialize <unk> with U(-0.25, 0.25) vectors
-                # field.vocab.vectors[i] = torch.FloatTensor(dim).uniform_(-0.25, 0.25)
+                field.vocab.vectors[i] = torch.FloatTensor(dim).uniform_(-0.25, 0.25)
                 # field.vocab.vectors[i] = torch.FloatTensor(dim).uniform_(-0.05, 0.05)
-                field.vocab.vectors[i] = torch.FloatTensor(dim).normal_(0, 0.01)
+                # field.vocab.vectors[i] = torch.FloatTensor(dim).normal_(0, 0.01)
+                # field.vocab.vectors[i] = torch.FloatTensor(dim).zero_()
     else:
         print("Error: Need word embedding pt file")
         print("Error: Need word embedding pt file")
@@ -120,7 +121,7 @@ parameter = filter(lambda p: p.requires_grad, pw_model.parameters())
 
 # the SM model originally follows SGD but Adadelta is used here
 optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
-marginRankingLoss = nn.MarginRankingLoss(margin = 1, size_average = False)
+marginRankingLoss = nn.MarginRankingLoss(margin=1, size_average=False)
 
 early_stop = False
 iterations = 0
