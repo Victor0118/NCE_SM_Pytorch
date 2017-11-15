@@ -8,10 +8,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 
-from mp_cnn.dataset import MPCNNDatasetFactory
-from mp_cnn.evaluation import MPCNNEvaluatorFactory
-from mp_cnn.model import MPCNN
-from mp_cnn.train import MPCNNTrainerFactory
+from sample_mp.dataset import MPCNNDatasetFactory
+from sample_mp.evaluation import MPCNNEvaluatorFactory
+from sample_mp.model import MPCNN
+from sample_mp.train import MPCNNTrainerFactory
 
 
 if __name__ == '__main__':
@@ -41,6 +41,11 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--tensorboard', action='store_true', default=False, help='use TensorBoard to visualize training (default: false)')
     parser.add_argument('--run-label', type=str, help='label to describe run')
+    parser.add_argument('--dev_log_interval', type=int, default=100, help='how many batches to wait before logging validation status (default: 100)')
+    parser.add_argument('--neg_num', type=int, default=8, help='number of negative samples for each question')
+    parser.add_argument('--neg_sample', type=str, default="random", help='strategy of negative sampling, random or max')
+    parser.add_argument('--castor_dir', help='castor directory', default=os.path.join(os.pardir))
+    parser.add_argument('--utils_trecqa', help='trecqa util file', default="utils/trec_eval-9.0.5/trec_eval")
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -84,16 +89,25 @@ if __name__ == '__main__':
     test_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, test_loader, args.batch_size, args.device)
     dev_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, dev_loader, args.batch_size, args.device)
 
+    if args.device != -1:
+        margin_label = torch.autograd.Variable(torch.ones(1).cuda(device=args.device))
+    else:
+        margin_label = torch.autograd.Variable(torch.ones(1))
+
     trainer_config = {
         'optimizer': optimizer,
         'batch_size': args.batch_size,
         'log_interval': args.log_interval,
+        'dev_log_interval': args.dev_log_interval,
         'model_outfile': args.model_outfile,
         'lr_reduce_factor': args.lr_reduce_factor,
         'patience': args.patience,
         'tensorboard': args.tensorboard,
         'run_label': args.run_label,
-        'logger': logger
+        'logger': logger,
+        'neg_num': args.neg_num,
+        'neg_sample': args.neg_sample,
+        'margin_label': margin_label
     }
     trainer = MPCNNTrainerFactory.get_trainer(args.dataset, model, train_loader, trainer_config, train_evaluator, test_evaluator, dev_evaluator)
 

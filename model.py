@@ -51,10 +51,15 @@ class MPCNN(nn.Module):
         self.final_layers = nn.Sequential(
             nn.Linear(n_feat, hidden_layer_units),
             nn.Tanh(),
+
+        )
+        self.final_layers_prediction = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(hidden_layer_units, num_classes),
             nn.LogSoftmax()
+
         )
+
 
     def _get_blocks_for_sentence(self, sent):
         block_a = {}
@@ -139,3 +144,6 @@ class MPCNN(nn.Module):
 
         preds = self.final_layers(feat_all)
         return preds
+
+    def predict(self, x):
+        return self.final_layers_prediction(x)

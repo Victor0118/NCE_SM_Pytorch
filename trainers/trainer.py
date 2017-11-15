@@ -10,6 +10,7 @@ class Trainer(object):
         self.train_loader = train_loader
         self.batch_size = trainer_config['batch_size']
         self.log_interval = trainer_config['log_interval']
+        self.log_interval = trainer_config['log_interval']
         self.model_outfile = trainer_config['model_outfile']
         self.lr_reduce_factor = trainer_config['lr_reduce_factor']
         self.patience = trainer_config['patience']
