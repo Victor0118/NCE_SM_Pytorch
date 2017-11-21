@@ -1,10 +1,10 @@
-from mp_cnn.evaluators.sick_evaluator import SICKEvaluator
-from mp_cnn.evaluators.msrvid_evaluator import MSRVIDEvaluator
-from mp_cnn.evaluators.trecqa_evaluator import TRECQAEvaluator
-from mp_cnn.evaluators.wikiqa_evaluator import WikiQAEvaluator
+from sample_sm.evaluators.sick_evaluator import SICKEvaluator
+from sample_sm.evaluators.msrvid_evaluator import MSRVIDEvaluator
+from sample_sm.evaluators.trecqa_evaluator import TRECQAEvaluator
+from sample_sm.evaluators.wikiqa_evaluator import WikiQAEvaluator
 
 
-class MPCNNEvaluatorFactory(object):
+class SMCNNEvaluatorFactory(object):
     """
     Get the corresponding Evaluator class for a particular dataset.
     """
@@ -23,9 +23,9 @@ class MPCNNEvaluatorFactory(object):
         if not hasattr(dataset_cls, 'NAME'):
             raise ValueError('Invalid dataset. Dataset should have NAME attribute.')
 
-        if dataset_cls.NAME not in MPCNNEvaluatorFactory.evaluator_map:
+        if dataset_cls.NAME not in SMCNNEvaluatorFactory.evaluator_map:
             raise ValueError('{} is not implemented.'.format(dataset_cls))
 
-        return MPCNNEvaluatorFactory.evaluator_map[dataset_cls.NAME](
+        return SMCNNEvaluatorFactory.evaluator_map[dataset_cls.NAME](
             dataset_cls, model, data_loader, batch_size, device
         )

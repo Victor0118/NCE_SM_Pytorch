@@ -8,10 +8,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 
-from sample_mp.dataset import MPCNNDatasetFactory
-from sample_mp.evaluation import MPCNNEvaluatorFactory
-from sample_mp.model import MPCNN
-from sample_mp.train import MPCNNTrainerFactory
+from sample_sm.dataset import SMCNNDatasetFactory
+from sample_sm.evaluation import SMCNNEvaluatorFactory
+from sample_sm.model import SmPlusPlus
+from sample_sm.train import SMCNNTrainerFactory
 
 
 if __name__ == '__main__':
@@ -46,6 +46,14 @@ if __name__ == '__main__':
     parser.add_argument('--neg_sample', type=str, default="random", help='strategy of negative sampling, random or max')
     parser.add_argument('--castor_dir', help='castor directory', default=os.path.join(os.pardir))
     parser.add_argument('--utils_trecqa', help='trecqa util file', default="utils/trec_eval-9.0.5/trec_eval")
+
+    parser.add_argument('--output_channel', type=int, default=150)
+    parser.add_argument('--words_dim', type=int, default=50)
+    parser.add_argument('--epoch_decay', type=int, default=15)
+    parser.add_argument('--vector_cache', type=str, default='../word2vec/word2vec.trecqa.pt')
+    parser.add_argument('--filter_width', type=int, default=5)
+    parser.add_argument('--mode', type=str, default='static')
+    parser.add_argument('--ext_feats_size', type=int, default=4)
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -66,28 +74,39 @@ if __name__ == '__main__':
 
     logger.info(pprint.pformat(vars(args)))
 
-    dataset_cls, embedding, train_loader, test_loader, dev_loader \
-        = MPCNNDatasetFactory.get_dataset(args.dataset, args.word_vectors_dir, args.word_vectors_file, args.batch_size, args.device)
+    dataset_cls, train_loader, test_loader, dev_loader \
+        = SMCNNDatasetFactory.get_dataset(args.dataset, args.word_vectors_dir, args.vector_cache, args.batch_size, args.device, pt_file=True)
 
     filter_widths = list(range(1, args.max_window_size + 1)) + [np.inf]
-    model = MPCNN(embedding, args.holistic_filters, args.per_dim_filters, filter_widths,
-                    args.hidden_units, dataset_cls.NUM_CLASSES, args.dropout, args.sparse_features)
+
+    config = args
+    config.questions_num = config.answers_num = len(dataset_cls.TEXT_FIELD.vocab)
+    config.target_class = len(dataset_cls.LABEL_FIELD.vocab)
+
+    # model = SmPlusPlus(embedding, args.holistic_filters, args.per_dim_filters, filter_widths,
+    #                 args.hidden_units, dataset_cls.NUM_CLASSES, args.dropout, args.sparse_features)
+    model = SmPlusPlus(config)
 
     if args.device != -1:
         with torch.cuda.device(args.device):
             model.cuda()
 
     optimizer = None
+    parameter = filter(lambda p: p.requires_grad, model.parameters())
+
     if args.optimizer == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.regularization, eps=args.epsilon)
+        optimizer = optim.Adam(parameter, lr=args.lr, weight_decay=args.regularization, eps=args.epsilon)
     elif args.optimizer == 'sgd':
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.regularization)
+        optimizer = optim.SGD(parameter, lr=args.lr, momentum=args.momentum, weight_decay=args.regularization)
+    elif args.optimizer == "adadelta":
+        # the SM model originally follows SGD but Adadelta is used here
+        optimizer = torch.optim.Adadelta(parameter, lr=args.lr, weight_decay=args.regularization, eps=args.epsilon)
     else:
         raise ValueError('optimizer not recognized: it should be either adam or sgd')
 
-    train_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, train_loader, args.batch_size, args.device)
-    test_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, test_loader, args.batch_size, args.device)
-    dev_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, dev_loader, args.batch_size, args.device)
+    train_evaluator = SMCNNEvaluatorFactory.get_evaluator(dataset_cls, model, train_loader, args.batch_size, args.device)
+    test_evaluator = SMCNNEvaluatorFactory.get_evaluator(dataset_cls, model, test_loader, args.batch_size, args.device)
+    dev_evaluator = SMCNNEvaluatorFactory.get_evaluator(dataset_cls, model, dev_loader, args.batch_size, args.device)
 
     if args.device != -1:
         margin_label = torch.autograd.Variable(torch.ones(1).cuda(device=args.device))
@@ -109,7 +128,7 @@ if __name__ == '__main__':
         'neg_sample': args.neg_sample,
         'margin_label': margin_label
     }
-    trainer = MPCNNTrainerFactory.get_trainer(args.dataset, model, train_loader, trainer_config, train_evaluator, test_evaluator, dev_evaluator)
+    trainer = SMCNNTrainerFactory.get_trainer(args.dataset, model, train_loader, trainer_config, train_evaluator, test_evaluator, dev_evaluator)
 
     if not args.skip_training:
         total_params = 0
@@ -120,7 +139,7 @@ if __name__ == '__main__':
         trainer.train(args.epochs)
 
     model = torch.load(args.model_outfile)
-    saved_model_evaluator = MPCNNEvaluatorFactory.get_evaluator(dataset_cls, model, test_loader, args.batch_size, args.device)
+    saved_model_evaluator = SMCNNEvaluatorFactory.get_evaluator(dataset_cls, model, test_loader, args.batch_size, args.device)
     scores, metric_names = saved_model_evaluator.get_scores()
     logger.info('Evaluation metrics for test')
     logger.info('\t'.join([' '] + metric_names))

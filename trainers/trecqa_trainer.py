@@ -1,4 +1,4 @@
-from sample_mp.trainers.qa_trainer import QATrainer
+from sample_sm.trainers.qa_trainer import QATrainer
 
 
 class TRECQATrainer(QATrainer):
