@@ -63,8 +63,6 @@ EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_firs
 
 train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 
-
-
 QID.build_vocab(train, dev, test)
 AID.build_vocab(train, dev, test)
 QUESTION.build_vocab(train, dev, test)
@@ -80,8 +78,6 @@ dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train
                                sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
                                 sort_key=lambda x: len(x.question), sort=False, shuffle=False)
-dev_iter, test_iter = test_iter, dev_iter
-
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
@@ -389,6 +385,8 @@ while True:
 
             test_mode = "dev"
             dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
+
+
 
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
