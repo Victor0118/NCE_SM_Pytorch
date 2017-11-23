@@ -84,10 +84,10 @@ def predict(test_mode, dataset_iter):
         qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
         true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
 
-        output = model.convModel(dev_batch)
+        scores = model(dev_batch) #, predict=True, dropout=False
 
-        scores = model.linearLayer(output)
-        score_array = scores.cpu().data.numpy().reshape(-1)
+        # score_array = scores.cpu().data.numpy().reshape(-1)
+        score_array = scores[:, 2].cpu().data.numpy()
 
         # print and write the result
         for i in range(dev_batch.batch_size):

@@ -35,7 +35,7 @@ class SmPlusPlus(nn.Module):
         words_dim = config.words_dim
         filter_width = config.filter_width
         self.mode = config.mode
-        self.dropout = config.dropout
+        self.dropout = nn.Dropout(config.dropout)
 
         n_classes = config.target_class
         ext_feats_size = config.ext_feats_size
@@ -62,7 +62,7 @@ class SmPlusPlus(nn.Module):
         self.combined_feature_vector = nn.Linear(self.n_hidden, self.n_hidden)
         self.hidden = nn.Linear(self.n_hidden, n_classes)
 
-    def forward(self, x):
+    def forward(self, x): #, predict=False, dropout=False
         x_question = x.question
         x_answer = x.answer
         x_ext = x.ext_feat
@@ -100,4 +100,11 @@ class SmPlusPlus(nn.Module):
         x = torch.cat(x, 1)
         x = F.tanh(self.combined_feature_vector(x))
 
+        # if predict:
+        #     if dropout:
+        #         x = self.dropout(x)
+        #     x = self.hidden(x)
+        x = self.dropout(x)
+        x = self.hidden(x)
         return x
+
