@@ -205,152 +205,149 @@ while True:
                     associated with the batch size. Currently, it seems to affect the result a lot.
     '''
     for batch_idx, batch in enumerate(iter(train_iter)):
-        # if epoch != 1:
-        iterations += 1
+        if epoch != 1:
+            iterations += 1
 
         loss_num = 0
         model.train()
-        optimizer.zero_grad()
-        output = model(batch) #h, predict=True, dropout=True
-        loss = Loss(output, batch.label)
-        loss_num = loss.data.numpy()[0]
-        loss.backward()
-        optimizer.step()
-    #
-    #     new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
-    #     features = model(batch)
-    #     new_train_pos = {"answer": [], "question": [], "ext_feat": []}
-    #     new_train_neg = {"answer": [], "question": [], "ext_feat": []}
-    #     max_len_q = 0
-    #     max_len_a = 0
-    #
-    #     batch_near_list = []
-    #     batch_qid = []
-    #     batch_aid = []
-    #     for i in range(batch.batch_size):
-    #         label_i = batch.label[i].cpu().data.numpy()[0]
-    #         question_i = batch.question[i]
-    #         # question_i = question_i[question_i!=1] # remove padding 1 <pad>
-    #         answer_i = batch.answer[i]
-    #         # answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
-    #         ext_feat_i = batch.ext_feat[i]
-    #         qid_i = batch.qid[i].data.cpu().numpy()[0]
-    #         aid_i = batch.aid[i].data.cpu().numpy()[0]
-    #
-    #         if qid_i not in question2answer:
-    #             question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
-    #         '''
-    #         # in the dataset, "1" is positive, "0" is negative
-    #         # in the code (after indexed by torchtext), 2 is positive and 1 is negative
-    #         '''
-    #         if label_i == 2:
-    #
-    #             if aid_i not in question2answer[qid_i]["pos"]:
-    #                 question2answer[qid_i]["pos"][aid_i] = {}
-    #
-    #             question2answer[qid_i]["pos"][aid_i]["answer"] = answer_i
-    #             question2answer[qid_i]["pos"][aid_i]["ext_feat"] = ext_feat_i
-    #
-    #             # get neg samples in the first epoch but do not train
-    #             if epoch == 1:
-    #                 continue
-    #             # random generate sample in the first training epoch
-    #             elif epoch == 2 or args.neg_sample == "random":
-    #                 near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
-    #             else:
-    #                 near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine",
-    #                                                k=args.neg_num)
-    #
-    #             batch_near_list.extend(near_list)
-    #
-    #             neg_size = len(near_list)
-    #             if neg_size != 0:
-    #                 answer_i = answer_i[answer_i != 1]  # remove padding 1 <pad>
-    #                 question_i = question_i[question_i != 1]  # remove padding 1 <pad>
-    #
-    #                 new_train_pos["answer"].append(answer_i)
-    #                 new_train_pos["question"].append(question_i)
-    #                 new_train_pos["ext_feat"].append(ext_feat_i)
-    #
-    #                 if question_i.size()[0] > max_len_q:
-    #                     max_len_q = question_i.size()[0]
-    #                 if answer_i.size()[0] > max_len_a:
-    #                     max_len_a = answer_i.size()[0]
-    #
-    #                 for near_id in near_list:
-    #                     batch_qid.append(qid_i)
-    #                     batch_aid.append(aid_i)
-    #
-    #                     near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
-    #                     if near_answer.size()[0] > max_len_a:
-    #                         max_len_a = near_answer.size()[0]
-    #
-    #                     ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
-    #                     new_train_neg["answer"].append(near_answer)
-    #                     new_train_neg["question"].append(question_i)
-    #                     new_train_neg["ext_feat"].append(ext_feat_neg)
-    #
-    #         elif label_i == 1:
-    #
-    #             if aid_i not in question2answer[qid_i]["neg"]:
-    #                 answer_i = answer_i[answer_i != 1]
-    #                 question2answer[qid_i]["neg"][aid_i] = {"answer": answer_i}
-    #
-    #             question2answer[qid_i]["neg"][aid_i]["feature"] = features[i].data.cpu().numpy()
-    #             question2answer[qid_i]["neg"][aid_i]["ext_feat"] = ext_feat_i
-    #
-    #             if epoch == 1:
-    #                 if qid_i not in q2neg:
-    #                     q2neg[qid_i] = []
-    #
-    #                 q2neg[qid_i].append(aid_i)
-    #
-    #     # pack the selected pos and neg samples into the torchtext batch and train
-    #     if epoch != 1:
-    #         # true_batch_size = len(new_train_neg["answer"])
-    #         neg_length = len(new_train_neg["answer"])
-    #         pos_length = len(new_train_pos["ext_feat"])
-    #         if neg_length != 0:
-    #             for j in range(neg_length):
-    #                 new_train_neg["answer"][j] = F.pad(new_train_neg["answer"][j],
-    #                                                    (0, max_len_a - new_train_neg["answer"][j].size()[0]), value=1)
-    #                 new_train_neg["question"][j] = F.pad(new_train_neg["question"][j],
-    #                                                      (0, max_len_q - new_train_neg["question"][j].size()[0]),
-    #                                                      value=1)
-    #             for j in range(pos_length):
-    #                 new_train_pos["answer"][j] = F.pad(new_train_pos["answer"][j],
-    #                                                (0, max_len_a - new_train_pos["answer"][j].size()[0]), value=1)
-    #                 new_train_pos["question"][j] = F.pad(new_train_pos["question"][j],
-    #                                                  (0, max_len_q - new_train_pos["question"][j].size()[0]), value=1)
-    #
-    #             pos_batch = get_batch(new_train_pos["question"], new_train_pos["answer"], new_train_pos["ext_feat"],
-    #                                   pos_length)
-    #             neg_batch = get_batch(new_train_neg["question"], new_train_neg["answer"], new_train_neg["ext_feat"],
-    #                                   neg_length)
-    #
-    #             pos_label = torch.autograd.Variable((torch.ones(pos_length)*2).type(torch.LongTensor))  # .cuda(device=1)
-    #             optimizer.zero_grad()
-    #             output = model(pos_batch, predict=True, dropout=True)
-    #             print(pos_label)
-    #             loss = Loss(output, pos_label)
-    #             # loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
-    #             loss_num = loss.data.numpy()[0]
-    #             loss.backward()
-    #             optimizer.step()
-    #
-    #             neg_label = torch.autograd.Variable((torch.ones(neg_length)).type(torch.LongTensor))
-    #             optimizer.zero_grad()
-    #             output = model(neg_batch, predict=True, dropout=True)
-    #             print(neg_label)
-    #             loss = Loss(output, neg_label)
-    #             # loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
-    #             loss_num = loss.data.numpy()[0]
-    #             loss.backward()
-    #             optimizer.step()
+        # optimizer.zero_grad()
+        # output = model(batch) #h, predict=True, dropout=True
+        # loss = Loss(output, batch.label)
+        # loss_num = loss.data.numpy()[0]
+        # loss.backward()
+        # optimizer.step()
+
+        new_train = {"ext_feat": [], "question": [], "answer": [], "label": []}
+        features = model(batch)
+        new_train_pos = {"answer": [], "question": [], "ext_feat": []}
+        new_train_neg = {"answer": [], "question": [], "ext_feat": []}
+        max_len_q = 0
+        max_len_a = 0
+
+        batch_near_list = []
+        batch_qid = []
+        batch_aid = []
+        for i in range(batch.batch_size):
+            label_i = batch.label[i].cpu().data.numpy()[0]
+            question_i = batch.question[i]
+            # question_i = question_i[question_i!=1] # remove padding 1 <pad>
+            answer_i = batch.answer[i]
+            # answer_i = answer_i[answer_i!=1] # remove padding 1 <pad>
+            ext_feat_i = batch.ext_feat[i]
+            qid_i = batch.qid[i].data.cpu().numpy()[0]
+            aid_i = batch.aid[i].data.cpu().numpy()[0]
+
+            if qid_i not in question2answer:
+                question2answer[qid_i] = {"question": question_i, "pos": {}, "neg": {}}
+            '''
+            # in the dataset, "1" is positive, "0" is negative
+            # in the code (after indexed by torchtext), 2 is positive and 1 is negative
+            '''
+            if label_i == 2:
+
+                if aid_i not in question2answer[qid_i]["pos"]:
+                    question2answer[qid_i]["pos"][aid_i] = {}
+
+                question2answer[qid_i]["pos"][aid_i]["answer"] = answer_i
+                question2answer[qid_i]["pos"][aid_i]["ext_feat"] = ext_feat_i
+
+                # get neg samples in the first epoch but do not train
+                if epoch == 1:
+                    continue
+                # random generate sample in the first training epoch
+                elif epoch == 2 or args.neg_sample == "random":
+                    near_list = get_random_neg_id(q2neg, qid_i, k=args.neg_num)
+                else:
+                    near_list = get_nearest_neg_id(features[i], question2answer[qid_i]["neg"], distance="cosine",
+                                                   k=args.neg_num)
+
+                batch_near_list.extend(near_list)
+
+                neg_size = len(near_list)
+                if neg_size != 0:
+                    answer_i = answer_i[answer_i != 1]  # remove padding 1 <pad>
+                    question_i = question_i[question_i != 1]  # remove padding 1 <pad>
+
+                    new_train_pos["answer"].append(answer_i)
+                    new_train_pos["question"].append(question_i)
+                    new_train_pos["ext_feat"].append(ext_feat_i)
+
+                    if question_i.size()[0] > max_len_q:
+                        max_len_q = question_i.size()[0]
+                    if answer_i.size()[0] > max_len_a:
+                        max_len_a = answer_i.size()[0]
+
+                    for near_id in near_list:
+                        batch_qid.append(qid_i)
+                        batch_aid.append(aid_i)
+
+                        near_answer = question2answer[qid_i]["neg"][near_id]["answer"]
+                        if near_answer.size()[0] > max_len_a:
+                            max_len_a = near_answer.size()[0]
+
+                        ext_feat_neg = question2answer[qid_i]["neg"][near_id]["ext_feat"]
+                        new_train_neg["answer"].append(near_answer)
+                        new_train_neg["question"].append(question_i)
+                        new_train_neg["ext_feat"].append(ext_feat_neg)
+
+            elif label_i == 1:
+
+                if aid_i not in question2answer[qid_i]["neg"]:
+                    answer_i = answer_i[answer_i != 1]
+                    question2answer[qid_i]["neg"][aid_i] = {"answer": answer_i}
+
+                question2answer[qid_i]["neg"][aid_i]["feature"] = features[i].data.cpu().numpy()
+                question2answer[qid_i]["neg"][aid_i]["ext_feat"] = ext_feat_i
+
+                if epoch == 1:
+                    if qid_i not in q2neg:
+                        q2neg[qid_i] = []
+
+                    q2neg[qid_i].append(aid_i)
+
+        # pack the selected pos and neg samples into the torchtext batch and train
+        if epoch != 1:
+            # true_batch_size = len(new_train_neg["answer"])
+            neg_length = len(new_train_neg["answer"])
+            pos_length = len(new_train_pos["ext_feat"])
+            if neg_length != 0:
+                for j in range(neg_length):
+                    new_train_neg["answer"][j] = F.pad(new_train_neg["answer"][j],
+                                                       (0, max_len_a - new_train_neg["answer"][j].size()[0]), value=1)
+                    new_train_neg["question"][j] = F.pad(new_train_neg["question"][j],
+                                                         (0, max_len_q - new_train_neg["question"][j].size()[0]), value=1)
+                for j in range(pos_length):
+                    new_train_pos["answer"][j] = F.pad(new_train_pos["answer"][j],
+                                                   (0, max_len_a - new_train_pos["answer"][j].size()[0]), value=1)
+                    new_train_pos["question"][j] = F.pad(new_train_pos["question"][j],
+                                                     (0, max_len_q - new_train_pos["question"][j].size()[0]), value=1)
+
+                pos_batch = get_batch(new_train_pos["question"], new_train_pos["answer"], new_train_pos["ext_feat"],
+                                      pos_length)
+                neg_batch = get_batch(new_train_neg["question"], new_train_neg["answer"], new_train_neg["ext_feat"],
+                                      neg_length)
+
+                pos_label = torch.autograd.Variable((torch.ones(pos_length)*2).type(torch.LongTensor))  # .cuda(device=1)
+                optimizer.zero_grad()
+                output = model(pos_batch, predict=True) #, dropout=True
+                loss = Loss(output, pos_label)
+                # loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
+                loss_num = loss.data.numpy()[0]
+                loss.backward()
+                optimizer.step()
+
+                neg_label = torch.autograd.Variable(torch.ones(neg_length).type(torch.LongTensor))
+                optimizer.zero_grad()
+                output = model(neg_batch, predict=True) #, dropout=True
+                loss = Loss(output, neg_label)
+                # loss = marginRankingLoss(output[:, 0], output[:, 1], torch.autograd.Variable(torch.ones(1)))
+                loss_num = loss.data.numpy()[0]
+                loss.backward()
+                optimizer.step()
 
         # Evaluate performance on validation set
-        # and epoch != 1
-        if iterations % args.dev_every == 1:
+        #
+        if iterations % args.dev_every == 1 and epoch != 1:
             # switch model into evaluation mode
             model.eval()
             dev_iter.init_epoch()
@@ -364,7 +361,7 @@ while True:
                 # dev singlely or in a batch? -> in a batch
                 but dev singlely is equal to dev_size = 1
                 '''
-                scores = model(dev_batch) #, predict=True, dropout=False
+                scores = model(dev_batch, predict=True) #, dropout=False
                 qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
                 # score_array = scores.cpu().data.numpy().reshape(-1)
                 score_array = scores[:, 2].cpu().data.numpy()
@@ -383,7 +380,7 @@ while True:
                 # dev singlely or in a batch? -> in a batch
                 but dev singlely is equal to dev_size = 1
                 '''
-                scores = model(test_batch) #, predict=True, dropout=False
+                scores = model(test_batch, predict=True) #, dropout=False
                 qid_array = index2qid[np.transpose(test_batch.qid.cpu().data.numpy())]
                 # score_array = scores.cpu().data.numpy().reshape(-1)
                 score_array = scores[:, 2].cpu().data.numpy()
@@ -401,7 +398,7 @@ while True:
                                           100. * (1 + batch_idx) / len(train_iter),
                                           loss_num, dev_map, dev_mrr, test_map, test_mrr))
             if best_dev_mrr < dev_mrr:
-                if epoch > 1:
+                if epoch > 2:
                     snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
                     torch.save(model, snapshot_path)
                     iters_not_improved = 0

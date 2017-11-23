@@ -62,7 +62,7 @@ class SmPlusPlus(nn.Module):
         self.combined_feature_vector = nn.Linear(self.n_hidden, self.n_hidden)
         self.hidden = nn.Linear(self.n_hidden, n_classes)
 
-    def forward(self, x): #, predict=False, dropout=False
+    def forward(self, x, predict=False): #, predict=False, dropout=False
         x_question = x.question
         x_answer = x.answer
         x_ext = x.ext_feat
@@ -100,11 +100,10 @@ class SmPlusPlus(nn.Module):
         x = torch.cat(x, 1)
         x = F.tanh(self.combined_feature_vector(x))
 
-        # if predict:
-        #     if dropout:
-        #         x = self.dropout(x)
-        #     x = self.hidden(x)
-        x = self.dropout(x)
-        x = self.hidden(x)
+        if predict:
+            x = self.dropout(x)
+            x = self.hidden(x)
+        # x = self.dropout(x)
+        # x = self.hidden(x)
         return x
 

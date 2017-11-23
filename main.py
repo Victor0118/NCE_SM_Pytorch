@@ -84,7 +84,7 @@ def predict(test_mode, dataset_iter):
         qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
         true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
 
-        scores = model(dev_batch) #, predict=True, dropout=False
+        scores = model(dev_batch, predict=True) #, dropout=False
 
         # score_array = scores.cpu().data.numpy().reshape(-1)
         score_array = scores[:, 2].cpu().data.numpy()
