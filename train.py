@@ -12,7 +12,7 @@ from torch.nn import functional as F
 
 from args import get_args
 from model import SmPlusPlus, PairwiseConv
-from trec_dataset import TrecDataset
+from trec_dataset import TrecDataset, WikiDataset
 from evaluate import evaluate
 
 args = get_args()
@@ -61,7 +61,14 @@ LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
                       postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 
-train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+
+if args.dataset == "TREC":
+    train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+elif args.dataset == "wikiqa":
+    train, dev, test = WikiDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+else:
+    print("Unsupported dataset")
+    exit()
 
 QID.build_vocab(train, dev, test)
 AID.build_vocab(train, dev, test)
@@ -129,19 +136,19 @@ best_dev_mrr = 0
 false_samples = {}
 
 start = time.time()
-header = '  Time Epoch Iteration Progress    (%Epoch)  Average_Loss Train_Accuracy Dev/MAP  Dev/MRR'
+header = '  Time Epoch Iteration Progress (%Epoch)  Average_Loss Train_Accuracy Dev/MAP  Dev/MRR'
 dev_log_template = ' '.join(
-    '{:>6.0f},{:>5.0f},{:>9.0f},{:>5.0f}/{:<5.0f} {:>7.0f}%,{:>11.6f},{:>11.6f},{:12.6f},{:8.4f}'.split(','))
-log_template = ' '.join('{:>6.0f},{:>5.0f},{:>9.0f},{:>5.0f}/{:<5.0f} {:>7.0f}%,{:>11.6f},{:>11.6f},'.split(','))
+    '{:>6.0f},{:>5.0f},{:>5.0f},{:>5.0f}/{:<5.0f} {:>3.0f}%,{:>11.4f},{:>11.4f},{:8.4f},{:8.4f},{:8.4f},{:8.4f}'.split(','))
+log_template = ' '.join('{:>6.0f},{:>5.0f},{:>5.0f},{:>5.0f}/{:<5.0f} {:>3.0f}%,{:>11.4f},{:>11.4f},'.split(','))
 os.makedirs(args.save_path, exist_ok=True)
 os.makedirs(os.path.join(args.save_path, args.dataset), exist_ok=True)
 print(header)
 
 index2label = np.array(LABEL.vocab.itos)  # ['<unk>', '0', '1']
-index2qid = np.array(QID.vocab.itos)  # torchtext index to qid in the TrecQA dataset
-index2aid = np.array(AID.vocab.itos)  # torchtext index to aid in the TrecQA dataset
-index2question = np.array(QUESTION.vocab.itos)  # torchtext index to words appearing in questions in the TrecQA dataset
-index2answer = np.array(ANSWER.vocab.itos)  # torchtext index to words appearing in answers in the TrecQA dataset
+index2qid = np.array(QID.vocab.itos)  # torchtext index to qid in the dataset
+index2aid = np.array(AID.vocab.itos)  # torchtext index to aid in the dataset
+index2question = np.array(QUESTION.vocab.itos)  # torchtext index to words appearing in questions in the dataset
+index2answer = np.array(ANSWER.vocab.itos)  # torchtext index to words appearing in answers in the dataset
 
 
 # get the nearest negative samples to the positive sample by computing the feature difference
@@ -190,7 +197,7 @@ def get_batch(question, answer, ext_feat, size):
 
 while True:
     if early_stop:
-        print("Early Stopping. Epoch: {}, Best Dev Loss: {}".format(epoch, best_dev_loss))
+        print("Early Stopping. Epoch: {}, Best Map: {}, Best Mrr: {}".format(epoch, best_dev_map, best_dev_mrr))
         break
     epoch += 1
     train_iter.init_epoch()
@@ -386,17 +393,36 @@ while True:
             test_mode = "dev"
             dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
 
+            instance = []
+            for test_batch_idx, test_batch in enumerate(test_iter):
+                '''
+                # dev singlely or in a batch? -> in a batch
+                but dev singlely is equal to dev_size = 1
+                '''
+                scores = pw_model.convModel(test_batch)
+                scores = pw_model.linearLayer(scores)
+                qid_array = index2qid[np.transpose(test_batch.qid.cpu().data.numpy())]
+                score_array = scores.cpu().data.numpy().reshape(-1)
+                true_label_array = index2label[np.transpose(test_batch.label.cpu().data.numpy())]
+                for i in range(test_batch.batch_size):
+                    this_qid, score, gold_label = qid_array[i], score_array[i], true_label_array[i]
+                    instance.append((this_qid, score, gold_label))
+
+            test_mode = "test"
+            test_map, test_mrr = evaluate(instance, test_mode, config.mode)
 
 
             print(dev_log_template.format(time.time() - start,
                                           epoch, iterations, 1 + batch_idx, len(train_iter),
                                           100. * (1 + batch_idx) / len(train_iter),
-                                          loss_num, acc / tot, dev_map, dev_mrr))
+                                          loss_num, acc / tot, dev_map, dev_mrr, test_map, test_mrr))
             if best_dev_mrr < dev_mrr:
-                snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
-                torch.save(pw_model, snapshot_path)
-                iters_not_improved = 0
-                best_dev_mrr = dev_mrr
+                if epoch > 2:
+                    snapshot_path = os.path.join(args.save_path, args.dataset, args.mode + '_best_model.pt')
+                    torch.save(pw_model, snapshot_path)
+                    iters_not_improved = 0
+                    best_dev_mrr = dev_mrr
+                    best_dev_map = dev_map
             else:
                 iters_not_improved += 1
                 if iters_not_improved >= args.patience:

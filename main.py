@@ -6,7 +6,7 @@ import torch
 from torchtext import data
 
 from args import get_args
-from trec_dataset import TrecDataset
+from trec_dataset import TrecDataset, WikiDataset
 from evaluate import evaluate
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_firs
                       postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 if config.dataset == 'TREC':
     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+elif config.dataset == 'wikiqa':
+    train, dev, test = WikiDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 else:
     print("Unsupported dataset")
     exit()
