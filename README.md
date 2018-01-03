@@ -55,19 +55,40 @@ Metric |rand   |static|non-static|multichannel
 MAP    |0.7441 |0.7524|0.7688    |0.7641
 MRR    |0.8172 |0.8012|0.8144    |0.8174
 
-##### Max Neg Sample
+##### Pairwise + Random Sample with neg_num = 8
 
-To be added
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.7427 |0.7546|0.7614    | 0.7645
+MRR    |0.8151 |0.8061|0.8162    | 0.8270
 
 ##### Pairwise + Max Neg Sample with neg_num = 8
 
 Metric |rand   |static|non-static|multichannel
 -------|-------|------|----------|------------
-MAP    |0.7427 |0.7546|0.7716    |0.7794
-MRR    |0.8151 |0.8061|0.8347    |0.8467
+MAP    |0.7437 |0.7602|0.7752   |0.7664
+MRR    |0.8151 |0.8109 |0.8270    |0.8347
 
 
 #### The performance on WikiQA dataset:
 
-To be added
+##### Without NCE
 
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.6472 |0.6500 | 0.6620|0.6542
+MRR    |0.664 |0.6693 | 0.6806|0.6722
+
+##### Pairwise + Random Sample with neg_num = 8
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.6655 |0.6816|0.6697  |0.6739
+MRR    |0.6831 |0.6992 |0.6929 |0.6925
+
+##### Pairwise + Max Neg Sample with neg_num = 8
+
+Metric |rand   |static|non-static|multichannel
+-------|-------|------|----------|------------
+MAP    |0.6687 |0.6796|0.6854   |0.6851
+MRR    |0.6864 |0.6977 |0.7012   |0.7035

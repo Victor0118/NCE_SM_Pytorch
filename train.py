@@ -346,7 +346,6 @@ while True:
                 optimizer.step()
 
         # Evaluate performance on validation set
-        #
         if iterations % args.dev_every == 1 and epoch != 1:
             # switch model into evaluation mode
             model.eval()
