@@ -41,7 +41,7 @@ saves/static_best_model.pt
 ### Testing the model
 
 ```
-python main.py --trained_model saves/TREC/multichannel_best_model.pt --batch_size 64 --no_cuda
+python main.py --trained_model saves/trecqa/multichannel_best_model.pt --batch_size 64 --no_cuda
 ```
 
 ### Evaluation

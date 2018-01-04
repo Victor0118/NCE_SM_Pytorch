@@ -4,6 +4,7 @@ import numpy as np
 import random
 import operator
 import heapq
+import pprint
 
 import torch
 import torch.nn as nn
@@ -20,6 +21,7 @@ config = args
 torch.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
 
+pprint.pprint(vars(args))
 
 def set_vectors(field, vector_path):
     if os.path.isfile(vector_path):
@@ -61,8 +63,7 @@ LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
                       postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
 
-
-if args.dataset == "TREC":
+if args.dataset == "trecqa":
     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 elif args.dataset == "wikiqa":
     train, dev, test = WikiDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
@@ -199,6 +200,10 @@ while True:
     if early_stop:
         print("Early Stopping. Epoch: {}, Best Map: {}, Best Mrr: {}".format(epoch, best_dev_map, best_dev_mrr))
         break
+    if epoch > args.epochs:
+        print("Epoch: {}, Best Map: {}, Best Mrr: {}".format(epoch, best_dev_map, best_dev_mrr))
+        break
+
     epoch += 1
     train_iter.init_epoch()
     '''

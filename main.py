@@ -41,7 +41,7 @@ ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
 EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
                       postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
-if config.dataset == 'TREC':
+if config.dataset == 'trecqa':
     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 elif config.dataset == 'wikiqa':
     train, dev, test = WikiDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
