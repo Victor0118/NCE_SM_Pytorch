@@ -36,10 +36,10 @@ if torch.cuda.is_available() and args.cuda:
 if torch.cuda.is_available() and not args.cuda:
     logger.info("Warning: You have Cuda but do not use it. You are using CPU for training")
 
-if args.dataset == "TREC":
+if args.dataset == "trecqa":
     dataset_cls = TRECQA
     dataset_root = os.path.join(os.pardir, os.pardir, os.pardir, 'data', 'TrecQA/')
-elif args.dataset == "wiki":
+elif args.dataset == "wikiqa":
     dataset_cls = WikiQA
     dataset_root = os.path.join(os.pardir, os.pardir, os.pardir, 'data', 'WikiQA/')
 else:

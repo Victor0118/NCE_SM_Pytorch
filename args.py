@@ -9,7 +9,7 @@ def get_args():
     parser.add_argument('--mode', type=str, default='static')
     parser.add_argument('--lr', type=float, default=0.95)
     parser.add_argument('--seed', type=int, default=3435)
-    parser.add_argument('--dataset', type=str, default='TREC')
+    parser.add_argument('--dataset', type=str, default='trecqa')
     parser.add_argument('--resume_snapshot', type=str, default=None)
     parser.add_argument('--dev_every', type=int, default=100)
     parser.add_argument('--log_every', type=int, default=10)
