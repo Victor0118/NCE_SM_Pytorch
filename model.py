@@ -15,6 +15,7 @@ class PairwiseConv(nn.Module):
         # https://discuss.pytorch.org/t/copying-nn-modules-without-shared-memory/113
         # self.negModel = copy.deepcopy(self.posModel)
         self.negModel = self.convModel
+        # self.activation = nn.Sigmoid()
 
     def forward(self, input):
         pos = self.posModel(input[0])
@@ -23,8 +24,15 @@ class PairwiseConv(nn.Module):
         neg = self.dropout(neg)
         pos = self.linearLayer(pos)
         neg = self.linearLayer(neg)
+        # pos = self.activation(pos)
+        # neg = self.activation(neg)
         combine = torch.cat([pos, neg], 1)
         return combine
+
+    def predict(self, feature):
+        pred = self.linearLayer(feature)
+        # pred = self.activation(pred)
+        return pred
 
 class SmPlusPlus(nn.Module):
     def __init__(self, config):
@@ -63,9 +71,9 @@ class SmPlusPlus(nn.Module):
         self.hidden = nn.Linear(self.n_hidden, n_classes)
 
     def forward(self, x):
-        x_question = x.question
-        x_answer = x.answer
-        x_ext = x.ext_feat
+        x_question = x.sentence_1
+        x_answer = x.sentence_2
+        x_ext = x.ext_feats
 
         if self.mode == 'rand':
             question = self.question_embed(x_question).unsqueeze(1)
