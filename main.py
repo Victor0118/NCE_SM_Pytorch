@@ -6,7 +6,7 @@ import torch
 from torchtext import data
 
 from args import get_args
-from trec_dataset import TrecDataset
+from trec_dataset import TrecDataset, WikiDataset
 from evaluate import evaluate
 
 logger = logging.getLogger(__name__)
@@ -39,11 +39,12 @@ AID = data.Field(sequential=False)
 QUESTION = data.Field(batch_first=True)
 ANSWER = data.Field(batch_first=True)
 LABEL = data.Field(sequential=False)
-EXTERNAL = data.Field(sequential=False, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
-                      preprocessing=data.Pipeline(lambda x: x.split()),
-                      postprocessing=data.Pipeline(lambda x, train: [float(y) for y in x]))
-if config.dataset == 'TREC':
+EXTERNAL = data.Field(sequential=True, tensor_type=torch.FloatTensor, batch_first=True, use_vocab=False,
+                      postprocessing=data.Pipeline(lambda arr, _, train: [float(y) for y in arr]))
+if config.dataset == 'trecqa':
     train, dev, test = TrecDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
+elif config.dataset == 'wikiqa':
+    train, dev, test = WikiDataset.splits(QID, QUESTION, AID, ANSWER, EXTERNAL, LABEL)
 else:
     print("Unsupported dataset")
     exit()
@@ -55,11 +56,11 @@ ANSWER.build_vocab(train, dev, test)
 LABEL.build_vocab(train, dev, test)
 
 train_iter = data.Iterator(train, batch_size=args.batch_size, device=args.gpu, train=True, repeat=False,
-                                   sort=False, shuffle=True)
+                           sort_key=lambda x: len(x.question), sort=False, shuffle=True)
 dev_iter = data.Iterator(dev, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                         sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 test_iter = data.Iterator(test, batch_size=args.batch_size, device=args.gpu, train=False, repeat=False,
-                                   sort=False, shuffle=False)
+                          sort_key=lambda x: len(x.question), sort=False, shuffle=False)
 
 config.target_class = len(LABEL.vocab)
 config.questions_num = len(QUESTION.vocab)
@@ -69,10 +70,11 @@ print("Label dict:", LABEL.vocab.itos)
 if args.cuda:
     model = torch.load(args.trained_model, map_location=lambda storage, location: storage.cuda(args.gpu))
 else:
-    model = torch.load(args.trained_model, map_location=lambda storage,location: storage)
+    model = torch.load(args.trained_model, map_location=lambda storage, location: storage)
 
 index2label = np.array(LABEL.vocab.itos)
 index2qid = np.array(QID.vocab.itos)
+
 
 def predict(test_mode, dataset_iter):
     model.eval()
@@ -82,15 +84,9 @@ def predict(test_mode, dataset_iter):
         qid_array = index2qid[np.transpose(dev_batch.qid.cpu().data.numpy())]
         true_label_array = index2label[np.transpose(dev_batch.label.cpu().data.numpy())]
 
-        # scores = model(dev_batch)
         output = model.convModel(dev_batch)
 
         scores = model.linearLayer(output)
-        # print(output)
-        # print(scores)
-        # exit(1)
-        # index_label = np.transpose(torch.max(scores, 1)[1].view(dev_batch.label.size()).cpu().data.numpy())
-        # label_array = index2label[index_label]
         score_array = scores.cpu().data.numpy().reshape(-1)
 
         # print and write the result
@@ -100,6 +96,7 @@ def predict(test_mode, dataset_iter):
 
     dev_map, dev_mrr = evaluate(instance, test_mode, config.mode)
     print(dev_map, dev_mrr)
+
 
 # Run the model on the dev set
 predict('dev', dataset_iter=dev_iter)

@@ -4,12 +4,12 @@ def get_args():
     parser = ArgumentParser(description="SM CNN")
     parser.add_argument('--no_cuda', action='store_false', help='do not use cuda', dest='cuda')
     parser.add_argument('--gpu', type=int, default=0) # Use -1 for CPU
-    parser.add_argument('--epochs', type=int, default=30)
+    parser.add_argument('--epochs', type=int, default=6)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--mode', type=str, default='static')
     parser.add_argument('--lr', type=float, default=0.95)
     parser.add_argument('--seed', type=int, default=3435)
-    parser.add_argument('--dataset', type=str, default='TREC')
+    parser.add_argument('--dataset', type=str, default='trecqa')
     parser.add_argument('--resume_snapshot', type=str, default=None)
     parser.add_argument('--dev_every', type=int, default=100)
     parser.add_argument('--log_every', type=int, default=10)
@@ -23,7 +23,9 @@ def get_args():
     parser.add_argument('--vector_cache', type=str, default='data/word2vec.trecqa.pt')
     parser.add_argument('--trained_model', type=str, default="")
     parser.add_argument('--weight_decay',type=float, default=1e-5)
+    parser.add_argument('--ext_feats_size', type=int, default=4)
     parser.add_argument('--neg_num', type=int, default=5)
+    parser.add_argument('--neg_sample', type=str, default="random")
 
     args = parser.parse_args()
     return args

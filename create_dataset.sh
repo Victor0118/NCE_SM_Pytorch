@@ -11,7 +11,7 @@ cd $CURRENT_DIR
 
 python overlap_features.py --dir ../../data/WikiQA/
 cd ../../data/WikiQA
-cd dev/; paste id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.dev.tsv; cd ..
-cd test/; paste id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.test.tsv; cd ..
-cd train/; paste id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.train.tsv; cd ..
+cd dev/; paste id.txt ans_id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.dev.tsv; cd ..
+cd test/; paste id.txt ans_id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.test.tsv; cd ..
+cd train/; paste id.txt ans_id.txt sim.txt a.toks b.toks overlap_feats.txt > $CURRENT_DIR/data/wikiqa.train.tsv; cd ..
 cd $CURRENT_DIR	
