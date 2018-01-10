@@ -17,7 +17,7 @@ def run(device, epochs, neg_sample, neg_num, dataset, dev_log_interval):
         filename = "grid_{dataset}_lr_{learning_rate}_eps_{eps}_reg_{reg}_device_{dev}.txt".format(learning_rate=learning_rate, eps=eps, reg=reg, dev=device, dataset=dataset)
         model_name = filename[:-4] + ".castor"
         command = "python -u main.py saved_models/{model} --epochs {epo} --device {dev} --dataset {dataset} --batch-size 50 " \
-                  "--lr {learning_rate} --epsilon {eps} --regularization {reg} --tensorboard --run-label {label} --dev_log_interval {dev_log_interval} " \
+                  "--lr {learning_rate} --epsilon {eps} --regularization {reg} --run-label {label} --dev_log_interval {dev_log_interval} " \
                   "--neg_sample {neg_sample} --neg_num {neg_num} --mode multichannel"\
             .format(epo=epochs, model=model_name, dev=device, dataset=dataset, learning_rate=learning_rate, eps=eps, reg=reg, label=filename, dev_log_interval=dev_log_interval, neg_sample=neg_sample, neg_num=neg_num)
 

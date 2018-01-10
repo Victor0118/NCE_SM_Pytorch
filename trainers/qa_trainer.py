@@ -157,7 +157,7 @@ class QATrainer(Trainer):
                     neg_batch = get_batch(new_train_neg["question"], new_train_neg["answer"], new_train_neg["ext_feat"],
                                           neg_length)
 
-                    pos_label = torch.autograd.Variable((torch.ones(pos_length)).type(torch.LongTensor)).cuda(device=1) #
+                    pos_label = torch.autograd.Variable((torch.ones(pos_length)).type(torch.LongTensor)) # .cuda(device=1)
                     self.model.train()
                     self.optimizer.zero_grad()
                     # output = self.model(pos_batch.sentence_1, pos_batch.sentence_2, pos_batch.ext_feats)
@@ -169,7 +169,7 @@ class QATrainer(Trainer):
                     loss.backward()
                     self.optimizer.step()
 
-                    neg_label = torch.autograd.Variable((torch.zeros(neg_length)).type(torch.LongTensor)).cuda(device=1) #
+                    neg_label = torch.autograd.Variable((torch.zeros(neg_length)).type(torch.LongTensor)) # .cuda(device=1)
                     self.optimizer.zero_grad()
                     # output = self.model(neg_batch.sentence_1, neg_batch.sentence_2, neg_batch.ext_feats)
                     output = self.model(neg_batch)
